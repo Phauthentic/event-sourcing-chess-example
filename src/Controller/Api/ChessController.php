@@ -8,7 +8,7 @@ use App\Domain\Chess\Game;
 use App\Domain\Chess\GameId;
 use App\Domain\Chess\Player;
 use App\Domain\Chess\Side;
-use App\DTO\NewChessGameDto;
+use App\DTO\Chess\NewChessGameDto;
 use Phauthentic\EventSourcing\Repository\EventSourcedRepositoryInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\AsController;
@@ -48,14 +48,19 @@ class ChessController
     public function createGame(
         #[MapRequestPayload]
         NewChessGameDto $newChessGameDto
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $gameId = GameId::fromString(Uuid::v4()->toRfc4122());
 
         $game = Game::create(
             $gameId,
-            new Player($newChessGameDto->white->name, Side::WHITE),
-            new Player($newChessGameDto->black->name, Side::BLACK),
+            new Player(
+                $newChessGameDto->white->name,
+                Side::WHITE
+            ),
+            new Player(
+                $newChessGameDto->black->name,
+                Side::BLACK
+            ),
         );
 
         $this->eventSourcedRepository->persist($game);
@@ -76,5 +81,49 @@ class ChessController
         $game = $this->eventSourcedRepository->restore($gameId, Game::class);
 
         $game->move('e2', 'e4');
+    }
+
+    #[Route(
+        path: '/api/chess/{gameId}/draw',
+        name: 'chess_offer_draw',
+        methods: ['POST']
+    )]
+    public function offerDraw(
+        string $gameId
+    ) {
+        $game = $this->eventSourcedRepository->restore($gameId, Game::class);
+    }
+
+    #[Route(
+        path: '/api/chess/{gameId}/draw',
+        name: 'chess_accept_draw',
+        methods: ['PUT']
+    )]
+    public function acceptDraw(
+        string $gameId
+    ) {
+        $game = $this->eventSourcedRepository->restore($gameId, Game::class);
+    }
+
+    #[Route(
+        path: '/api/chess/{gameId}/draw',
+        name: 'chess_decline_draw',
+        methods: ['DELETE']
+    )]
+    public function declineDraw(
+        string $gameId
+    ) {
+        $game = $this->eventSourcedRepository->restore($gameId, Game::class);
+    }
+
+    #[Route(
+        path: '/api/chess/{gameId}/checkmate',
+        name: 'chess_declare_checkmate',
+        methods: ['POST']
+    )]
+    public function declareCheckmate(
+        string $gameId
+    ) {
+        $game = $this->eventSourcedRepository->restore($gameId, Game::class);
     }
 }
