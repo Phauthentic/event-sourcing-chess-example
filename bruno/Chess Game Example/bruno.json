@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Chess Game Example",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

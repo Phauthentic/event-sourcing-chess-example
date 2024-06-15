@@ -1,0 +1,11 @@
+meta {
+  name: Get Game
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{host}}/api/chess/{{gameId}}
+  body: none
+  auth: none
+}

@@ -1,0 +1,28 @@
+meta {
+  name: Create Game
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{host}}/api/chess
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+    "white": {
+      "name": "Joe Biden"
+    },
+    "black": {
+      "name": "Volodomyr Zelensky"
+    }
+  }
+  
+}
