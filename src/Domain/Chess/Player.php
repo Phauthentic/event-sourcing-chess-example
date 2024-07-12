@@ -15,4 +15,12 @@ class Player
     )
     {
     }
+
+    public function toArray()
+    {
+        return [
+            'name' => $this->name,
+            'side' => $this->side->value
+        ];
+    }
 }

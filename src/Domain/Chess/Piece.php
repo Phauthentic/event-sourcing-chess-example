@@ -71,4 +71,13 @@ class Piece
     {
         $this->type = $pieceType;
     }
+
+    public function toArray(): array
+    {
+        return [
+            'side' => $this->side->value,
+            'type' => $this->type->value,
+            'position' => $this->position->toString()
+        ];
+    }
 }

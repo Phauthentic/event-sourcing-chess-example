@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Chess;
 
 use App\Domain\Chess\Event\GameCreated;
+use JsonSerializable;
 use Phauthentic\EventSourcing\Aggregate\AbstractEventSourcedAggregate;
 use Phauthentic\EventSourcing\Aggregate\Attribute\AggregateIdentifier;
 use Phauthentic\EventSourcing\Aggregate\Attribute\AggregateVersion;
@@ -13,7 +14,7 @@ use Phauthentic\EventSourcing\Aggregate\Attribute\DomainEvents;
 /**
  * @link https://en.wikipedia.org/wiki/Algebraic_notation_(chess)
  */
-final class Game extends AbstractEventSourcedAggregate
+final class Game extends AbstractEventSourcedAggregate implements JsonSerializable
 {
     #[AggregateIdentifier]
     private GameId $gameId;
@@ -32,18 +33,18 @@ final class Game extends AbstractEventSourcedAggregate
 
     public function __construct(
         GameId         $gameId,
-        private ?Player $playerOne,
-        private ?Player $playerTwo
+        private Player $white,
+        private Player $black
     ) {
         $this->gameId = $gameId;
-        $this->assertPlayersDonNotHaveTheSameSide($playerOne, $playerTwo);
+        $this->assertPlayersDonNotHaveTheSameSide($white, $black);
 
         $this->populateBoard();
 
         $this->recordThat(GameCreated::create(
             $gameId->id,
-            $playerOne->name,
-            $playerTwo->name
+            $white->toArray(),
+            $black->toArray()
         ));
     }
 
@@ -61,6 +62,8 @@ final class Game extends AbstractEventSourcedAggregate
 
     /**
      * Sets the pieces on the board to their initial position for a new game.
+     *
+     * @return void
      */
     private function populateBoard(): void
     {
@@ -73,49 +76,43 @@ final class Game extends AbstractEventSourcedAggregate
      */
     private function setPawns(Side $side): void
     {
-        switch ($side) {
-            case Side::WHITE:
-                $number = 2;
-                break;
-            case Side::BLACK:
-                $number = 7;
-                break;
-        }
+        $side === Side::WHITE ? $number = 2 : $number = 7;
 
         $charCode = 96;
         for ($i = 0; $i < 8; $i++) {
             $charCode++;
-            $this->fields[chr($charCode) . $number] = new Piece($side, PieceType::PAWN, new Position(chr($charCode) . $number));
+            $position = chr($charCode) . $number;
+            $this->fields[$position] = new Piece($side, PieceType::PAWN, new Position($position));
         }
     }
 
     private function setBlackPieces(): void
-    {
-        $this->setPawns(Side::BLACK);
+        {
+            $this->setPawns(Side::BLACK);
 
-        $this->fields['a8'] = new Piece(Side::BLACK, PieceType::ROOK, new Position('a8'));
-        $this->fields['h8'] = new Piece(Side::BLACK, PieceType::ROOK, new Position('a8'));
-        $this->fields['b8'] = new Piece(Side::BLACK, PieceType::BISHOP, new Position('b8'));
-        $this->fields['g8'] = new Piece(Side::BLACK, PieceType::BISHOP, new Position('g8'));
-        $this->fields['c8'] = new Piece(Side::BLACK, PieceType::KNIGHT, new Position('c8'));
-        $this->fields['f8'] = new Piece(Side::BLACK, PieceType::KNIGHT, new Position('f8'));
-        $this->fields['d8'] = new Piece(Side::BLACK, PieceType::QUEEN, new Position('d8'));
-        $this->fields['e8'] = new Piece(Side::BLACK, PieceType::KING, new Position('e8'));
-    }
+            $this->fields[Field::a8->value] = new Piece(Side::BLACK, PieceType::ROOK, new Position(Field::a8->value));
+            $this->fields[Field::h8->value] = new Piece(Side::BLACK, PieceType::ROOK, new Position(Field::h8->value));
+            $this->fields[Field::b8->value] = new Piece(Side::BLACK, PieceType::BISHOP, new Position(Field::b8->value));
+            $this->fields[Field::g8->value] = new Piece(Side::BLACK, PieceType::BISHOP, new Position(Field::g8->value));
+            $this->fields[Field::c8->value] = new Piece(Side::BLACK, PieceType::KNIGHT, new Position(Field::c8->value));
+            $this->fields[Field::f8->value] = new Piece(Side::BLACK, PieceType::KNIGHT, new Position(Field::f8->value));
+            $this->fields[Field::d8->value] = new Piece(Side::BLACK, PieceType::QUEEN, new Position(Field::d8->value));
+            $this->fields[Field::e8->value] = new Piece(Side::BLACK, PieceType::KING, new Position(Field::e8->value));
+        }
 
-    private function setWhitePieces(): void
-    {
-        $this->setPawns(Side::WHITE);
+        private function setWhitePieces(): void
+        {
+            $this->setPawns(Side::WHITE);
 
-        $this->fields['a1'] = new Piece(Side::WHITE, PieceType::ROOK, new Position('a8'));
-        $this->fields['h1'] = new Piece(Side::WHITE, PieceType::ROOK, new Position('a8'));
-        $this->fields['b1'] = new Piece(Side::WHITE, PieceType::BISHOP, new Position('b1'));
-        $this->fields['g1'] = new Piece(Side::WHITE, PieceType::BISHOP, new Position('g1'));
-        $this->fields['c1'] = new Piece(Side::WHITE, PieceType::KNIGHT, new Position('c1'));
-        $this->fields['f1'] = new Piece(Side::WHITE, PieceType::KNIGHT, new Position('f1'));
-        $this->fields['e1'] = new Piece(Side::WHITE, PieceType::QUEEN, new Position('e1'));
-        $this->fields['d1'] = new Piece(Side::WHITE, PieceType::KING, new Position('d1'));
-    }
+            $this->fields[Field::a1->value] = new Piece(Side::WHITE, PieceType::ROOK, new Position(Field::a1->value));
+            $this->fields[Field::h1->value] = new Piece(Side::WHITE, PieceType::ROOK, new Position(Field::h1->value));
+            $this->fields[Field::b1->value] = new Piece(Side::WHITE, PieceType::BISHOP, new Position(Field::b1->value));
+            $this->fields[Field::g1->value] = new Piece(Side::WHITE, PieceType::BISHOP, new Position(Field::g1->value));
+            $this->fields[Field::c1->value] = new Piece(Side::WHITE, PieceType::KNIGHT, new Position(Field::c1->value));
+            $this->fields[Field::f1->value] = new Piece(Side::WHITE, PieceType::KNIGHT, new Position(Field::f1->value));
+            $this->fields[Field::d1->value] = new Piece(Side::WHITE, PieceType::QUEEN, new Position(Field::d1->value));
+            $this->fields[Field::e1->value] = new Piece(Side::WHITE, PieceType::KING, new Position(Field::e1->value));
+        }
 
     private function assertPlayersDonNotHaveTheSameSide(Player $playerWhite, Player $playerBlack): void
     {
@@ -145,17 +142,26 @@ final class Game extends AbstractEventSourcedAggregate
         return null;
     }
 
-    private function endTurn()
+    private function endTurn(): void
     {
-        $this->activePlayer = $this->activePlayer === $this->playerOne ? $this->playerTwo : $this->playerOne;
+        $this->activePlayer = $this->activePlayer === $this->white ? $this->black : $this->white;
     }
 
     protected function whenGameCreated(GameCreated $event): void
     {
-        $this->gameId = GameId::fromString($event->boardId);
-        //$this->playerOne = new Player($event->playerOne, Side::WHITE);
-        //$this->playerTwo = new Player($event->playerTwo, Side::BLACK);
-        //$this->activePlayer = $this->playerOne;
+        $this->gameId = GameId::fromString($event->gameId);
+
+        $this->white = new Player(
+            $event->white['name'],
+            Side::WHITE
+        );
+
+        $this->black = new Player(
+            $event->black['name'],
+            Side::BLACK
+        );
+
+        $this->populateBoard();
     }
 
     /**
@@ -170,12 +176,21 @@ final class Game extends AbstractEventSourcedAggregate
 
     public function toArray(): array
     {
+        $fields = [];
+        foreach ($this->fields as $field) {
+            $fields[$field->position->toString()] = $field->toArray();
+        }
+
         return [
-            'boardId' => $this->gameId->id,
-            //'playerOne' => $this->playerOne?->name,
-            //'playerTwo' => $this->playerTwo?->name,
-            'pieces' => $this->pieces,
-            ///'activePlayer' => $this->activePlayer->name,
+            'gameId' => (string)$this->gameId,
+            'white' => $this->white->toArray(),
+            'black' => $this->black->toArray(),
+            'fields' => $fields
         ];
+    }
+
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 }

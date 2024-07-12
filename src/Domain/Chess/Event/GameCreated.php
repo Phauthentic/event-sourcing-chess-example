@@ -7,30 +7,30 @@ namespace App\Domain\Chess\Event;
 /**
  *
  */
-final class GameCreated
+final readonly class GameCreated
 {
-    public readonly string $boardId;
-    public readonly  string $playerWhiteName;
-    public readonly  string $playerBlackName;
+    public string $gameId;
+    public array $white;
+    public array $black;
 
     private function __construct(
     ) {}
 
     /**
      * @param string $boardId
-     * @param string $playerWhiteName
-     * @param string $playerBlackName
+     * @param array $white
+     * @param array $black
      * @return self
      */
     public static function create(
         string $boardId,
-        string $playerWhiteName,
-        string $playerBlackName,
+        array $white,
+        array $black,
     ) {
         $that = new self();
-        $that->boardId = $boardId;
-        $that->playerWhiteName = $playerWhiteName;
-        $that->playerBlackName = $playerBlackName;
+        $that->gameId = $boardId;
+        $that->white = $white;
+        $that->black = $black;
 
         return $that;
     }
