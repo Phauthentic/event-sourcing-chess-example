@@ -152,6 +152,12 @@ class Board
         return $this->fields[$position->toString()] instanceof Piece;
     }
 
+    public function fieldHasPawn(Position $position): ?Piece
+    {
+        $piece = $this->fields[$position->toString()];
+        return ($piece instanceof Piece && $piece->type === PieceType::PAWN) ? $piece : null;
+    }
+
     public function getNumberOfPieces(?Side $side = null): int
     {
         $pieces = array_filter($this->fields, fn($p) => $p instanceof Piece);

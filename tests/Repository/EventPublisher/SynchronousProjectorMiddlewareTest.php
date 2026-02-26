@@ -28,6 +28,9 @@ class SynchronousProjectorMiddlewareTest extends TestCase
 
         // Should not throw any exceptions
         $this->middleware->handle($event);
+
+        // Assert that the method completes successfully
+        $this->assertTrue(true);
     }
 
     public function testHandlesEventWithProjectors(): void

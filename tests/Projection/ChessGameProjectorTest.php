@@ -106,13 +106,11 @@ class ChessGameProjectorTest extends TestCase
             ->method('flush');
 
         $moveEvent = new PieceMoved(
+            gameId: 'game-123',
             pieceType: 'pawn',
             from: 'e2',
             to: 'e4'
         );
-
-        // Manually set gameId on event for testing (in real events this would be a property)
-        $moveEvent->gameId = 'game-123';
 
         $this->projector->project($moveEvent);
 

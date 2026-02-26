@@ -11,6 +11,7 @@
 
 /tools/
 ###> symfony/phpunit-bridge ###
+.phpunit.cache
 .phpunit.result.cache
 /phpunit.xml
 ###< symfony/phpunit-bridge ###

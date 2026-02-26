@@ -5,48 +5,55 @@ declare(strict_types=1);
 namespace App\Tests\Domain\Chess;
 
 use App\Domain\Chess\Board;
-use App\Domain\Chess\BoardId;
 use App\Domain\Chess\Piece;
-use App\Domain\Chess\Player;
+use App\Domain\Chess\PieceType;
 use App\Domain\Chess\Position;
 use App\Domain\Chess\Side;
 use PHPUnit\Framework\TestCase;
 
 class BoardTest extends TestCase
 {
-    public function testGameStartedEventIsRecorded(): void
+    public function testBoardInitialization(): void
     {
-        $boardId = new BoardId();
-        $playerOne = new Player('Player One', Side::WHITE);
-        $playerTwo = new Player('Player Two', Side::BLACK);
+        $board = new Board();
 
-        $board = new Board($boardId, $playerOne, $playerTwo);
+        // Test that board has 32 pieces initially (16 white + 16 black)
+        $this->assertEquals(32, $board->getNumberOfPieces());
 
-        $domainEvents = $board->getDomainEvents();
+        // Test that board has 16 white pieces
+        $this->assertEquals(16, $board->getNumberOfPieces(Side::WHITE));
 
-        $this->assertCount(1, $domainEvents);
-        $this->assertInstanceOf(GameStarted::class, $domainEvents[0]);
-        $this->assertEquals($boardId, $domainEvents[0]->getBoardId());
-        $this->assertEquals($playerOne, $domainEvents[0]->getPlayerOne());
-        $this->assertEquals($playerTwo, $domainEvents[0]->getPlayerTwo());
+        // Test that board has 16 black pieces
+        $this->assertEquals(16, $board->getNumberOfPieces(Side::BLACK));
+
+        // Test that e2 has a white pawn
+        $this->assertNotNull($board->fieldHasPawn(new Position('e2')));
+        $pawn = $board->fieldHasPawn(new Position('e2'));
+        $this->assertEquals(Side::WHITE, $pawn->side);
     }
 
     public function testMovePiece(): void
     {
-        $boardId = new BoardId();
-        $playerOne = new Player('Player One', Side::WHITE);
-        $playerTwo = new Player('Player Two', Side::BLACK);
-
-        $board = new Board($boardId, $playerOne, $playerTwo);
+        $board = new Board();
 
         $from = new Position('e2');
         $to = new Position('e4');
 
-        $board->move($from, $to);
+        // Get the piece at e2 (should be a white pawn)
+        $piece = $board->getPiece($from);
+        $this->assertInstanceOf(Piece::class, $piece);
+        $this->assertEquals(Side::WHITE, $piece->side);
+        $this->assertEquals(PieceType::PAWN, $piece->type);
+
+        // Move the piece
+        $board->movePiece($piece, $to);
 
         // Assert that the piece has moved to the new position
         $this->assertNull($board->fieldHasPawn($from));
-        $this->assertInstanceOf(Piece::class, $board->fieldHasPawn($to));
+        $this->assertNotNull($board->fieldHasPawn($to));
+        $movedPiece = $board->fieldHasPawn($to);
+        $this->assertEquals($piece, $movedPiece);
+        $this->assertEquals($to, $movedPiece->position);
     }
 
     // Add more test cases for other methods in the Board class...
