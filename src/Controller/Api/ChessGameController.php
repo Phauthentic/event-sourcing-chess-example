@@ -39,6 +39,7 @@ class ChessGameController
             $data = json_decode($request->getContent(), true) ?? [];
             $from = $data['from'] ?? null;
             $to = $data['to'] ?? null;
+            $promotion = $data['promotion'] ?? null;
 
             if (!$from || !$to) {
                 return new JsonResponse(
@@ -47,7 +48,15 @@ class ChessGameController
                 );
             }
 
-            $this->chessGameService->move($id, $from, $to);
+            // Validate promotion parameter if provided
+            if ($promotion !== null && !in_array(strtolower($promotion), ['q', 'r', 'b', 'n'])) {
+                return new JsonResponse(
+                    ['error' => 'Invalid promotion piece. Must be one of: q, r, b, n'],
+                    400
+                );
+            }
+
+            $this->chessGameService->move($id, $from, $to, $promotion);
 
             return new JsonResponse(['success' => true]);
         } catch (ChessDomainException $e) {

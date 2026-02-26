@@ -11,7 +11,7 @@ class Piece
 {
     public function __construct(
         public readonly Side $side,
-        public readonly PieceType $type,
+        public PieceType $type,
         public Position $position
     ) {
     }

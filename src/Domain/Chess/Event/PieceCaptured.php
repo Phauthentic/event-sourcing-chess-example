@@ -15,6 +15,7 @@ class PieceCaptured
         public readonly string $captured = '',
         public readonly string $from = '',
         public readonly string $to = '',
+        public readonly bool $isEnPassant = false,
     ) {
     }
 }

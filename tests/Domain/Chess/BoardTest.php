@@ -56,5 +56,105 @@ class BoardTest extends TestCase
         $this->assertEquals($to, $movedPiece->position);
     }
 
-    // Add more test cases for other methods in the Board class...
+    public function testIsPathClear(): void
+    {
+        $board = new Board();
+
+        // Test clear path - rook from a1 to a8 (but there's a pawn on a2, so it's blocked)
+        $this->assertFalse($board->isPathClear(new Position('a1'), new Position('a8')));
+
+        // Test blocked path - there are pieces between a1 and h1
+        $this->assertFalse($board->isPathClear(new Position('a1'), new Position('h1')));
+
+        // Test a clear path - remove pieces to make it clear
+        $board->removePiece(new Position('b1'));
+        $board->removePiece(new Position('c1'));
+        $board->removePiece(new Position('d1'));
+        $board->removePiece(new Position('e1'));
+        $board->removePiece(new Position('f1'));
+        $board->removePiece(new Position('g1'));
+
+        $this->assertTrue($board->isPathClear(new Position('a1'), new Position('h1')));
+    }
+
+    public function testGetKingPosition(): void
+    {
+        $board = new Board();
+
+        $whiteKingPos = $board->getKingPosition(Side::WHITE);
+        $this->assertEquals('e1', $whiteKingPos->toString());
+
+        $blackKingPos = $board->getKingPosition(Side::BLACK);
+        $this->assertEquals('e8', $blackKingPos->toString());
+    }
+
+    public function testIsSquareAttackedBy(): void
+    {
+        $board = new Board();
+
+        // Test knight attacks (knights can jump)
+        $this->assertTrue($board->isSquareAttackedBy(new Position('a3'), Side::WHITE)); // attacked by b1 knight
+        $this->assertTrue($board->isSquareAttackedBy(new Position('c3'), Side::WHITE)); // attacked by b1 knight
+
+        // Test pawn attacks
+        $this->assertTrue($board->isSquareAttackedBy(new Position('b3'), Side::WHITE)); // attacked by a2 pawn
+        $this->assertTrue($board->isSquareAttackedBy(new Position('f3'), Side::WHITE)); // attacked by e2 pawn
+
+        // Test that own pieces don't attack squares occupied by own pieces
+        $this->assertFalse($board->isSquareAttackedBy(new Position('h2'), Side::WHITE)); // occupied by own pawn, not attacked by own pieces
+    }
+
+    public function testClone(): void
+    {
+        $board = new Board();
+        $clonedBoard = $board->clone();
+
+        // Original board should still have pieces
+        $this->assertTrue($board->fieldHasPiece(new Position('e1')));
+
+        // Cloned board should also have pieces
+        $this->assertTrue($clonedBoard->fieldHasPiece(new Position('e1')));
+
+        // But they should be different objects
+        $this->assertNotSame($board, $clonedBoard);
+
+        // Move a piece on the cloned board
+        $piece = $clonedBoard->getPiece(new Position('e2'));
+        $clonedBoard->movePiece($piece, new Position('e4'));
+
+        // Original board should be unchanged
+        $this->assertTrue($board->fieldHasPiece(new Position('e2')));
+        $this->assertFalse($board->fieldHasPiece(new Position('e4')));
+    }
+
+    public function testGetAllPositions(): void
+    {
+        $board = new Board();
+        $positions = $board->getAllPositions();
+
+        $this->assertCount(64, $positions);
+
+        // Check that all positions are valid Position objects
+        foreach ($positions as $position) {
+            $this->assertInstanceOf(Position::class, $position);
+            $this->assertMatchesRegularExpression('/^[a-h][1-8]$/', $position->toString());
+        }
+
+        // Check specific positions
+        $positionStrings = array_map(fn($pos) => $pos->toString(), $positions);
+        $this->assertContains('a1', $positionStrings);
+        $this->assertContains('h8', $positionStrings);
+        $this->assertContains('e4', $positionStrings);
+    }
+
+    public function testRemovePiece(): void
+    {
+        $board = new Board();
+
+        $position = new Position('e2');
+        $this->assertTrue($board->fieldHasPiece($position));
+
+        $board->removePiece($position);
+        $this->assertFalse($board->fieldHasPiece($position));
+    }
 }

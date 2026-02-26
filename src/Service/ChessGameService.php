@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Domain\Chess\Board;
 use App\Domain\Chess\Game;
 use App\Domain\Chess\GameId;
+use App\Domain\Chess\PieceType;
 use App\Domain\Chess\Player;
 use App\Domain\Chess\Position;
 use App\Domain\Chess\Side;
@@ -50,12 +51,14 @@ class ChessGameService
         return $game;
     }
 
-    public function move(string $gameId, string $from, string $to): void
+    public function move(string $gameId, string $from, string $to, ?string $promotion = null): void
     {
         $game = $this->getGame($gameId);
+        $promotionType = $promotion ? PieceType::from(strtoupper($promotion)) : null;
         $game->move(
             Position::fromString($from),
-            Position::fromString($to)
+            Position::fromString($to),
+            $promotionType
         );
         $this->repository->persist($game);
     }

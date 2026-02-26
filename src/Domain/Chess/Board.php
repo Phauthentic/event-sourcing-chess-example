@@ -117,8 +117,8 @@ class Board
         $this->fields['g1'] = new Piece(Side::WHITE, PieceType::BISHOP, new Position('g1'));
         $this->fields['c1'] = new Piece(Side::WHITE, PieceType::KNIGHT, new Position('c1'));
         $this->fields['f1'] = new Piece(Side::WHITE, PieceType::KNIGHT, new Position('f1'));
-        $this->fields['e1'] = new Piece(Side::WHITE, PieceType::QUEEN, new Position('e1'));
-        $this->fields['d1'] = new Piece(Side::WHITE, PieceType::KING, new Position('d1'));
+        $this->fields['d1'] = new Piece(Side::WHITE, PieceType::QUEEN, new Position('d1'));
+        $this->fields['e1'] = new Piece(Side::WHITE, PieceType::KING, new Position('e1'));
     }
 
     private function initializeBoard()
@@ -136,6 +136,11 @@ class Board
     public function removePieceAtPosition(Position $position): void
     {
         $this->removePiece($position);
+    }
+
+    public function placePiece(Piece $piece, Position $position): void
+    {
+        $this->fields[$position->toString()] = $piece;
     }
 
     public function getPiece(Position $position): Piece
@@ -205,5 +210,152 @@ class Board
         $board .= '    a b c d e f g h';
 
         return $board;
+    }
+
+    public function isPathClear(Position $from, Position $to): bool
+    {
+        if (!$from->isStraight($to) && !$from->isDiagonal($to)) {
+            // Not a straight or diagonal move
+            return false;
+        }
+
+        [$fileDelta, $rankDelta] = $from->distanceTo($to);
+
+        $fileStep = $fileDelta === 0 ? 0 : ($fileDelta > 0 ? 1 : -1);
+        $rankStep = $rankDelta === 0 ? 0 : ($rankDelta > 0 ? 1 : -1);
+
+        $currentFile = $from->fileIndex() + $fileStep;
+        $currentRank = $from->rankIndex() + $rankStep;
+
+        $endFile = $to->fileIndex();
+        $endRank = $to->rankIndex();
+
+        while ($currentFile !== $endFile || $currentRank !== $endRank) {
+            $position = new Position(chr($currentFile + ord('a')) . ($currentRank + 1));
+            if ($this->fieldHasPiece($position)) {
+                return false;
+            }
+
+            $currentFile += $fileStep;
+            $currentRank += $rankStep;
+        }
+
+        return true;
+    }
+
+    public function getKingPosition(Side $side): Position
+    {
+        foreach ($this->fields as $position => $piece) {
+            if ($piece instanceof Piece &&
+                $piece->type === PieceType::KING &&
+                $piece->side === $side) {
+                return Position::fromString($position);
+            }
+        }
+
+        throw new \RuntimeException("King not found for side {$side->value}");
+    }
+
+    public function isSquareAttackedBy(Position $square, Side $bySide): bool
+    {
+        // If the square is occupied by a piece of the same side, it's not "attacked"
+        if ($this->fieldHasPiece($square)) {
+            $occupyingPiece = $this->getPiece($square);
+            if ($occupyingPiece->side === $bySide) {
+                return false;
+            }
+        }
+
+        // Check if any piece of the given side can attack this square
+        foreach ($this->fields as $position => $piece) {
+            if (!$piece instanceof Piece || $piece->side !== $bySide) {
+                continue;
+            }
+
+            $from = Position::fromString($position);
+
+            // Skip if it's the same position
+            if ($from->toString() === $square->toString()) {
+                continue;
+            }
+
+            // Check if this piece can attack the square
+            if ($this->canPieceAttackSquare($piece, $from, $square)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function canPieceAttackSquare(Piece $piece, Position $from, Position $to): bool
+    {
+        // Basic piece movement rules (simplified for attack checking)
+        switch ($piece->type) {
+            case PieceType::PAWN:
+                return $this->canPawnAttack($piece->side, $from, $to);
+            case PieceType::ROOK:
+                return $from->isStraight($to) && $this->isPathClear($from, $to);
+            case PieceType::BISHOP:
+                return $from->isDiagonal($to) && $this->isPathClear($from, $to);
+            case PieceType::QUEEN:
+                return ($from->isStraight($to) || $from->isDiagonal($to)) && $this->isPathClear($from, $to);
+            case PieceType::KNIGHT:
+                return $from->isKnightMove($to);
+            case PieceType::KING:
+                [$fileDelta, $rankDelta] = $from->distanceTo($to);
+                return abs($fileDelta) <= 1 && abs($rankDelta) <= 1;
+        }
+
+        return false;
+    }
+
+    private function canPawnAttack(Side $side, Position $from, Position $to): bool
+    {
+        [$fileDelta, $rankDelta] = $from->distanceTo($to);
+
+        if ($side === Side::WHITE) {
+            return $rankDelta === 1 && abs($fileDelta) === 1;
+        } else {
+            return $rankDelta === -1 && abs($fileDelta) === 1;
+        }
+    }
+
+    public function clone(): Board
+    {
+        $cloned = new Board();
+
+        // Clear the cloned board and copy pieces
+        foreach ($cloned->fields as $position => $value) {
+            $cloned->fields[$position] = null;
+        }
+
+        foreach ($this->fields as $position => $piece) {
+            if ($piece instanceof Piece) {
+                $cloned->fields[$position] = new Piece(
+                    $piece->side,
+                    $piece->type,
+                    Position::fromString($position)
+                );
+            }
+        }
+
+        return $cloned;
+    }
+
+    /**
+     * Get all positions on the board (useful for iterating through all squares).
+     *
+     * @return Position[]
+     */
+    public function getAllPositions(): array
+    {
+        $positions = [];
+        for ($rank = 1; $rank <= 8; $rank++) {
+            for ($file = 'a'; $file <= 'h'; $file++) {
+                $positions[] = new Position($file . $rank);
+            }
+        }
+        return $positions;
     }
 }
