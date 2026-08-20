@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Domain\Chess;
 
 use App\Domain\Chess\Board;
+use App\Domain\Chess\Exception\NoPieceOnSquare;
 use App\Domain\Chess\Piece;
 use App\Domain\Chess\PieceType;
 use App\Domain\Chess\Position;
@@ -17,118 +18,84 @@ class BoardTest extends TestCase
     {
         $board = new Board();
 
-        // Test that board has 32 pieces initially (16 white + 16 black)
-        $this->assertEquals(32, $board->getNumberOfPieces());
+        $this->assertEquals(32, $board->pieceCount());
+        $this->assertEquals(16, $board->pieceCount(Side::WHITE));
+        $this->assertEquals(16, $board->pieceCount(Side::BLACK));
 
-        // Test that board has 16 white pieces
-        $this->assertEquals(16, $board->getNumberOfPieces(Side::WHITE));
-
-        // Test that board has 16 black pieces
-        $this->assertEquals(16, $board->getNumberOfPieces(Side::BLACK));
-
-        // Test that e2 has a white pawn
-        $this->assertNotNull($board->fieldHasPawn(new Position('e2')));
-        $pawn = $board->fieldHasPawn(new Position('e2'));
+        $pawn = $board->pieceAt(new Position('e2'));
+        $this->assertNotNull($pawn);
         $this->assertEquals(Side::WHITE, $pawn->side);
+        $this->assertEquals(PieceType::PAWN, $pawn->type);
     }
 
-    public function testMovePiece(): void
+    public function testMove(): void
     {
         $board = new Board();
 
         $from = new Position('e2');
         $to = new Position('e4');
 
-        // Get the piece at e2 (should be a white pawn)
-        $piece = $board->getPiece($from);
+        $piece = $board->pieceAt($from);
         $this->assertInstanceOf(Piece::class, $piece);
         $this->assertEquals(Side::WHITE, $piece->side);
         $this->assertEquals(PieceType::PAWN, $piece->type);
 
-        // Move the piece
-        $board->movePiece($piece, $to);
+        $board->move($from, $to);
 
-        // Assert that the piece has moved to the new position
-        $this->assertNull($board->fieldHasPawn($from));
-        $this->assertNotNull($board->fieldHasPawn($to));
-        $movedPiece = $board->fieldHasPawn($to);
-        $this->assertEquals($piece, $movedPiece);
-        $this->assertEquals($to, $movedPiece->position);
+        $this->assertNull($board->pieceAt($from));
+        $this->assertSame($piece, $board->pieceAt($to));
+    }
+
+    public function testMoveFromEmptySquareThrows(): void
+    {
+        $board = Board::fromFen('4k3/8/8/8/8/8/8/4K3');
+
+        $this->expectException(NoPieceOnSquare::class);
+
+        $board->move(new Position('a1'), new Position('a2'));
     }
 
     public function testIsPathClear(): void
     {
         $board = new Board();
 
-        // Test clear path - rook from a1 to a8 (but there's a pawn on a2, so it's blocked)
+        // Blocked path - there is a pawn on a2 between a1 and a8
         $this->assertFalse($board->isPathClear(new Position('a1'), new Position('a8')));
 
-        // Test blocked path - there are pieces between a1 and h1
+        // Blocked path - there are pieces between a1 and h1
         $this->assertFalse($board->isPathClear(new Position('a1'), new Position('h1')));
 
-        // Test a clear path - remove pieces to make it clear
-        $board->removePiece(new Position('b1'));
-        $board->removePiece(new Position('c1'));
-        $board->removePiece(new Position('d1'));
-        $board->removePiece(new Position('e1'));
-        $board->removePiece(new Position('f1'));
-        $board->removePiece(new Position('g1'));
+        // Clear path - remove the pieces in between
+        foreach (['b1', 'c1', 'd1', 'e1', 'f1', 'g1'] as $square) {
+            $board->remove(new Position($square));
+        }
 
         $this->assertTrue($board->isPathClear(new Position('a1'), new Position('h1')));
     }
 
-    public function testGetKingPosition(): void
+    public function testKingPosition(): void
     {
         $board = new Board();
 
-        $whiteKingPos = $board->getKingPosition(Side::WHITE);
-        $this->assertEquals('e1', $whiteKingPos->position);
-
-        $blackKingPos = $board->getKingPosition(Side::BLACK);
-        $this->assertEquals('e8', $blackKingPos->position);
+        $this->assertEquals('e1', $board->kingPosition(Side::WHITE)->position);
+        $this->assertEquals('e8', $board->kingPosition(Side::BLACK)->position);
     }
 
-    public function testClone(): void
+    public function testCloneIsIndependent(): void
     {
         $board = new Board();
-        $clonedBoard = $board->clone();
+        $clonedBoard = clone $board;
 
-        // Original board should still have pieces
-        $this->assertTrue($board->fieldHasPiece(new Position('e1')));
-
-        // Cloned board should also have pieces
-        $this->assertTrue($clonedBoard->fieldHasPiece(new Position('e1')));
-
-        // But they should be different objects
+        $this->assertNotNull($board->pieceAt(new Position('e1')));
+        $this->assertNotNull($clonedBoard->pieceAt(new Position('e1')));
         $this->assertNotSame($board, $clonedBoard);
 
         // Move a piece on the cloned board
-        $piece = $clonedBoard->getPiece(new Position('e2'));
-        $clonedBoard->movePiece($piece, new Position('e4'));
+        $clonedBoard->move(new Position('e2'), new Position('e4'));
 
-        // Original board should be unchanged
-        $this->assertTrue($board->fieldHasPiece(new Position('e2')));
-        $this->assertFalse($board->fieldHasPiece(new Position('e4')));
-    }
-
-    public function testGetAllPositions(): void
-    {
-        $board = new Board();
-        $positions = $board->getAllPositions();
-
-        $this->assertCount(64, $positions);
-
-        // Check that all positions are valid Position objects
-        foreach ($positions as $position) {
-            $this->assertInstanceOf(Position::class, $position);
-            $this->assertMatchesRegularExpression('/^[a-h][1-8]$/', $position->position);
-        }
-
-        // Check specific positions
-        $positionStrings = array_map(fn($pos) => $pos->position, $positions);
-        $this->assertContains('a1', $positionStrings);
-        $this->assertContains('h8', $positionStrings);
-        $this->assertContains('e4', $positionStrings);
+        // Original board is unchanged
+        $this->assertNotNull($board->pieceAt(new Position('e2')));
+        $this->assertNull($board->pieceAt(new Position('e4')));
     }
 
     public function testFenRoundTrip(): void
@@ -139,14 +106,17 @@ class BoardTest extends TestCase
         $this->assertEquals($fen, Board::fromFen($fen)->toFen());
     }
 
-    public function testRemovePiece(): void
+    public function testPlaceAndRemove(): void
     {
-        $board = new Board();
+        $board = Board::fromFen('4k3/8/8/8/8/8/8/4K3');
+        $position = new Position('d4');
 
-        $position = new Position('e2');
-        $this->assertTrue($board->fieldHasPiece($position));
+        $this->assertNull($board->pieceAt($position));
 
-        $board->removePiece($position);
-        $this->assertFalse($board->fieldHasPiece($position));
+        $board->place($position, new Piece(PieceType::QUEEN, Side::WHITE));
+        $this->assertEquals(PieceType::QUEEN, $board->pieceAt($position)?->type);
+
+        $board->remove($position);
+        $this->assertNull($board->pieceAt($position));
     }
 }

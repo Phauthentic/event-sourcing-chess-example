@@ -44,10 +44,6 @@ class ChessGameService
         /** @var Game $game */
         $game = $this->repository->restore($gameId, Game::class);
 
-        if ($game->getBoard() === null) {
-            throw new \RuntimeException('Game not found');
-        }
-
         return $game;
     }
 
@@ -63,6 +59,9 @@ class ChessGameService
         $this->repository->persist($game);
     }
 
+    /**
+     * @return array{board: array<string, array{type?: string, side?: string, symbol?: string}|null>, activePlayer: string}
+     */
     public function getBoardState(string $gameId): array
     {
         // Try to get state from read model first (projection)
@@ -77,29 +76,21 @@ class ChessGameService
 
         // Fallback to aggregate state (temporary migration safety)
         $game = $this->getGame($gameId);
-        $board = $game->getBoard();
+        $board = $game->board();
 
         $squares = [];
-        $files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-        for ($rank = 8; $rank >= 1; $rank--) {
-            foreach ($files as $file) {
-                $pos = $file . $rank;
-                $position = Position::fromString($pos);
-                $squares[$pos] = null;
-                if ($board->fieldHasPiece($position)) {
-                    $piece = $board->getPiece($position);
-                    $squares[$pos] = [
-                        'type' => $piece->type->value,
-                        'side' => $piece->side->value,
-                        'symbol' => ChessBoardRenderer::symbol($piece->side->value, $piece->type->value),
-                    ];
-                }
-            }
+        foreach (Position::all() as $position) {
+            $piece = $board->pieceAt($position);
+            $squares[$position->position] = $piece === null ? null : [
+                'type' => $piece->type->value,
+                'side' => $piece->side->value,
+                'symbol' => ChessBoardRenderer::symbol($piece->side->value, $piece->type->value),
+            ];
         }
 
         return [
             'board' => $squares,
-            'activePlayer' => $game->getActivePlayer()->name,
+            'activePlayer' => $game->activePlayer()->name,
         ];
     }
 

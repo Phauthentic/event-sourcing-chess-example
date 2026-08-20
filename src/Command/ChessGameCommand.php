@@ -68,6 +68,7 @@ class ChessGameCommand extends Command
         $io->text(['Enter moves as "from to" (e.g. e2 e4)', 'Commands: board, check, offer-draw, accept-draw, quit', '']);
 
         $questionHelper = $this->getHelper('question');
+        \assert($questionHelper instanceof QuestionHelper);
 
         while (true) {
             $state = $this->chessGameService->getBoardState($gameId);
@@ -137,7 +138,7 @@ class ChessGameCommand extends Command
             }
 
             $parts = preg_split('/\s+/', $inputLine, 2);
-            if (count($parts) !== 2) {
+            if ($parts === false || count($parts) !== 2) {
                 $io->warning('Invalid input. Use "from to" (e.g. e2 e4)');
                 continue;
             }
@@ -148,8 +149,6 @@ class ChessGameCommand extends Command
                 $this->chessGameService->move($gameId, $from, $to);
                 $io->success("Moved $from to $to");
             } catch (ChessDomainException $e) {
-                $io->error($e->getMessage());
-            } catch (\InvalidArgumentException $e) {
                 $io->error($e->getMessage());
             }
         }

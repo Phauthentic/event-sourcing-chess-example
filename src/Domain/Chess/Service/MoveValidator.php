@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Domain\Chess\Service;
 
 use App\Domain\Chess\Board;
+use App\Domain\Chess\CastlingSide;
+use App\Domain\Chess\Exception\NoPieceOnSquare;
 use App\Domain\Chess\Game;
 use App\Domain\Chess\MoveKind;
 use App\Domain\Chess\Piece;
@@ -48,14 +50,14 @@ class MoveValidator
         Position $to,
         ?PieceType $promotion = null
     ): bool {
-        $board = $game->getBoard();
-        $piece = $board->getPiece($from);
+        $board = $game->board();
+        $piece = $board->pieceAt($from) ?? throw NoPieceOnSquare::at($from);
 
         if (!$this->isBasicMoveValid($game, $to, $piece)) {
             return false;
         }
 
-        return match ($this->moveKind($board, $from, $to, $game->getEnPassantTarget())) {
+        return match ($this->moveKind($board, $from, $to, $game->enPassantTarget())) {
             MoveKind::CASTLING => $this->isCastlingLegal($game, $from, $to),
             MoveKind::EN_PASSANT => true, // conditions are fully checked by the classifier
             MoveKind::STANDARD => $this->isStandardMoveLegal($game, $piece, $from, $to, $promotion),
@@ -68,7 +70,7 @@ class MoveValidator
      */
     public function moveKind(Board $board, Position $from, Position $to, ?Position $enPassantTarget): MoveKind
     {
-        $piece = $board->getPiece($from);
+        $piece = $board->pieceAt($from) ?? throw NoPieceOnSquare::at($from);
 
         return match (true) {
             $this->isCastlingMove($piece, $from, $to) => MoveKind::CASTLING,
@@ -82,11 +84,11 @@ class MoveValidator
      */
     public function isSquareAttackedBy(Board $board, Position $square, Side $bySide): bool
     {
-        if ($board->fieldHasPiece($square) && $board->getPiece($square)->side === $bySide) {
+        if ($board->pieceAt($square)?->side === $bySide) {
             return false;
         }
 
-        foreach ($board->getAllPositions() as $from) {
+        foreach (Position::all() as $from) {
             if ($this->attacksSquareFrom($board, $from, $square, $bySide)) {
                 return true;
             }
@@ -97,12 +99,8 @@ class MoveValidator
 
     private function attacksSquareFrom(Board $board, Position $from, Position $square, Side $bySide): bool
     {
-        if ($from->position === $square->position || !$board->fieldHasPiece($from)) {
-            return false;
-        }
-
-        $piece = $board->getPiece($from);
-        if ($piece->side !== $bySide) {
+        $piece = $board->pieceAt($from);
+        if ($piece === null || $piece->side !== $bySide || $from->position === $square->position) {
             return false;
         }
 
@@ -116,15 +114,14 @@ class MoveValidator
 
     private function isPawnAttack(Side $side, Position $from, Position $to): bool
     {
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
         $forward = $side === Side::WHITE ? 1 : -1;
 
-        return $rankDelta === $forward && abs($fileDelta) === 1;
+        return $from->rankDistanceTo($to) === $forward && abs($from->fileDistanceTo($to)) === 1;
     }
 
     private function isStandardMoveLegal(Game $game, Piece $piece, Position $from, Position $to, ?PieceType $promotion): bool
     {
-        if (!$this->specifications[$piece->type->value]->isSatisfiedBy($piece, $from, $to, $game->getBoard())) {
+        if (!$this->specifications[$piece->type->value]->isSatisfiedBy($piece, $from, $to, $game->board())) {
             return false;
         }
 
@@ -138,14 +135,12 @@ class MoveValidator
     private function isBasicMoveValid(Game $game, Position $to, Piece $piece): bool
     {
         // Must be the active player's piece
-        if ($game->getActivePlayer()->side !== $piece->side) {
+        if ($game->activePlayer()->side !== $piece->side) {
             return false;
         }
 
         // Destination must be empty or contain an enemy piece
-        $board = $game->getBoard();
-
-        return !$board->fieldHasPiece($to) || $board->getPiece($to)->side !== $piece->side;
+        return $game->board()->pieceAt($to)?->side !== $piece->side;
     }
 
     private function isEnPassantCapture(
@@ -159,7 +154,7 @@ class MoveValidator
             return false;
         }
 
-        if ($to->position !== $enPassantTarget->position || $board->fieldHasPiece($to)) {
+        if ($to->position !== $enPassantTarget->position || $board->pieceAt($to) !== null) {
             return false;
         }
 
@@ -172,20 +167,18 @@ class MoveValidator
             return false;
         }
 
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
-
-        // Castling: king moves 2 squares horizontally
-        return $rankDelta === 0 && abs($fileDelta) === 2;
+        return $from->rankDistanceTo($to) === 0 && abs($from->fileDistanceTo($to)) === 2;
     }
 
     private function isCastlingLegal(Game $game, Position $from, Position $to): bool
     {
-        $board = $game->getBoard();
-        $piece = $board->getPiece($from);
-        $opponentSide = $piece->side === Side::WHITE ? Side::BLACK : Side::WHITE;
+        $board = $game->board();
+        $piece = $board->pieceAt($from) ?? throw NoPieceOnSquare::at($from);
+        $opponentSide = $piece->side->opponent();
 
         $isKingside = $to->fileIndex() > $from->fileIndex();
-        if (!$game->getCastlingRights()->hasRights($piece->side, $isKingside ? 'kingside' : 'queenside')) {
+        $castlingSide = $isKingside ? CastlingSide::KINGSIDE : CastlingSide::QUEENSIDE;
+        if (!$game->castlingRights()->hasRights($piece->side, $castlingSide)) {
             return false;
         }
 
@@ -241,15 +234,16 @@ class MoveValidator
 
     private function wouldLeaveKingInCheck(Game $game, Position $from, Position $to): bool
     {
-        $simulatedBoard = $game->getBoard()->clone();
-        $piece = $simulatedBoard->getPiece($from);
+        $piece = $game->board()->pieceAt($from) ?? throw NoPieceOnSquare::at($from);
 
-        // Simulate on the clone only — the live board's Piece instances must not be mutated.
-        $simulatedBoard->movePiece($piece, $to);
+        // Simulate on a copy only — the live board must not be mutated.
+        $simulatedBoard = clone $game->board();
+        $simulatedBoard->move($from, $to);
 
-        $kingPosition = $simulatedBoard->getKingPosition($piece->side);
-        $opponentSide = $piece->side === Side::WHITE ? Side::BLACK : Side::WHITE;
-
-        return $this->isSquareAttackedBy($simulatedBoard, $kingPosition, $opponentSide);
+        return $this->isSquareAttackedBy(
+            $simulatedBoard,
+            $simulatedBoard->kingPosition($piece->side),
+            $piece->side->opponent()
+        );
     }
 }

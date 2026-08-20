@@ -6,6 +6,7 @@ namespace App\Tests\Domain\Chess;
 
 use App\Domain\Chess\Board;
 use App\Domain\Chess\CastlingRights;
+use App\Domain\Chess\CastlingSide;
 use App\Domain\Chess\Event\CheckAnnounced;
 use App\Domain\Chess\Event\GameStarted;
 use App\Domain\Chess\Event\PieceCaptured;
@@ -30,11 +31,11 @@ class GameTest extends TestCase
 
         $game = Game::create($gameId, $player1, $player2, new Board());
 
-        $this->assertEquals($gameId, $game->getGameId());
-        $this->assertEquals($player1, $game->getActivePlayer());
-        $this->assertEquals(GameStatus::IN_PROGRESS, $game->getStatus());
-        $this->assertEquals(CastlingRights::initial(), $game->getCastlingRights());
-        $this->assertNull($game->getEnPassantTarget());
+        $this->assertEquals($gameId, $game->gameId());
+        $this->assertEquals($player1, $game->activePlayer());
+        $this->assertEquals(GameStatus::IN_PROGRESS, $game->status());
+        $this->assertEquals(CastlingRights::initial(), $game->castlingRights());
+        $this->assertNull($game->enPassantTarget());
 
         $events = $game->consumeAggregateEvents();
         $this->assertCount(1, $events);
@@ -49,7 +50,7 @@ class GameTest extends TestCase
         $game->move(new Position('e2'), new Position('e4'));
 
         // En passant target should be set to e3 (the square the pawn passed over)
-        $this->assertEquals('e3', $game->getEnPassantTarget()?->position);
+        $this->assertEquals('e3', $game->enPassantTarget()?->position);
     }
 
     public function testEnPassantCapture(): void
@@ -63,14 +64,14 @@ class GameTest extends TestCase
         $game->move(new Position('d7'), new Position('d5'));
 
         // Now it's white's turn and en passant target should be set to d6
-        $this->assertEquals('d6', $game->getEnPassantTarget()?->position);
+        $this->assertEquals('d6', $game->enPassantTarget()?->position);
 
         // White captures en passant
         $game->move(new Position('e5'), new Position('d6'));
 
-        $this->assertTrue($game->getBoard()->fieldHasPiece(new Position('d6')));
-        $this->assertFalse($game->getBoard()->fieldHasPiece(new Position('d5')));
-        $this->assertFalse($game->getBoard()->fieldHasPiece(new Position('e5')));
+        $this->assertNotNull($game->board()->pieceAt(new Position('d6')));
+        $this->assertNull($game->board()->pieceAt(new Position('d5')));
+        $this->assertNull($game->board()->pieceAt(new Position('e5')));
     }
 
     public function testCastlingKingside(): void
@@ -80,10 +81,10 @@ class GameTest extends TestCase
         // Kingside castling: king from e1 to g1, rook from h1 to f1
         $game->move(new Position('e1'), new Position('g1'));
 
-        $this->assertTrue($game->getBoard()->fieldHasPiece(new Position('g1')));
-        $this->assertTrue($game->getBoard()->fieldHasPiece(new Position('f1')));
-        $this->assertFalse($game->getBoard()->fieldHasPiece(new Position('e1')));
-        $this->assertFalse($game->getBoard()->fieldHasPiece(new Position('h1')));
+        $this->assertNotNull($game->board()->pieceAt(new Position('g1')));
+        $this->assertNotNull($game->board()->pieceAt(new Position('f1')));
+        $this->assertNull($game->board()->pieceAt(new Position('e1')));
+        $this->assertNull($game->board()->pieceAt(new Position('h1')));
     }
 
     public function testCastlingQueenside(): void
@@ -93,33 +94,33 @@ class GameTest extends TestCase
         // Queenside castling: king from e1 to c1, rook from a1 to d1
         $game->move(new Position('e1'), new Position('c1'));
 
-        $this->assertTrue($game->getBoard()->fieldHasPiece(new Position('c1')));
-        $this->assertTrue($game->getBoard()->fieldHasPiece(new Position('d1')));
+        $this->assertNotNull($game->board()->pieceAt(new Position('c1')));
+        $this->assertNotNull($game->board()->pieceAt(new Position('d1')));
     }
 
     public function testCastlingRightsRevokedAfterKingMove(): void
     {
         $game = $this->createGame('4k3/8/8/8/8/8/8/4K3');
 
-        $this->assertTrue($game->getCastlingRights()->hasRights(Side::WHITE, 'kingside'));
-        $this->assertTrue($game->getCastlingRights()->hasRights(Side::WHITE, 'queenside'));
+        $this->assertTrue($game->castlingRights()->hasRights(Side::WHITE, CastlingSide::KINGSIDE));
+        $this->assertTrue($game->castlingRights()->hasRights(Side::WHITE, CastlingSide::QUEENSIDE));
 
         $game->move(new Position('e1'), new Position('e2'));
 
-        $this->assertFalse($game->getCastlingRights()->hasRights(Side::WHITE, 'kingside'));
-        $this->assertFalse($game->getCastlingRights()->hasRights(Side::WHITE, 'queenside'));
+        $this->assertFalse($game->castlingRights()->hasRights(Side::WHITE, CastlingSide::KINGSIDE));
+        $this->assertFalse($game->castlingRights()->hasRights(Side::WHITE, CastlingSide::QUEENSIDE));
     }
 
     public function testCastlingRightsRevokedAfterRookMove(): void
     {
         $game = $this->createGame('4k3/8/8/8/8/8/8/4K2R');
 
-        $this->assertTrue($game->getCastlingRights()->hasRights(Side::WHITE, 'kingside'));
+        $this->assertTrue($game->castlingRights()->hasRights(Side::WHITE, CastlingSide::KINGSIDE));
 
         $game->move(new Position('h1'), new Position('h2'));
 
-        $this->assertFalse($game->getCastlingRights()->hasRights(Side::WHITE, 'kingside'));
-        $this->assertTrue($game->getCastlingRights()->hasRights(Side::WHITE, 'queenside'));
+        $this->assertFalse($game->castlingRights()->hasRights(Side::WHITE, CastlingSide::KINGSIDE));
+        $this->assertTrue($game->castlingRights()->hasRights(Side::WHITE, CastlingSide::QUEENSIDE));
     }
 
     public function testCannotMoveWhenGameIsFinished(): void
@@ -141,7 +142,7 @@ class GameTest extends TestCase
         $game->offerDraw();
         $game->acceptDraw();
 
-        $this->assertEquals(GameStatus::DRAW_AGREED, $game->getStatus());
+        $this->assertEquals(GameStatus::DRAW_AGREED, $game->status());
     }
 
     public function testPawnMove(): void
@@ -150,8 +151,8 @@ class GameTest extends TestCase
 
         $game->move(new Position('e4'), new Position('e5'));
 
-        $this->assertTrue($game->getBoard()->fieldHasPiece(new Position('e5')));
-        $this->assertFalse($game->getBoard()->fieldHasPiece(new Position('e4')));
+        $this->assertNotNull($game->board()->pieceAt(new Position('e5')));
+        $this->assertNull($game->board()->pieceAt(new Position('e4')));
     }
 
     public function testCannotCaptureOwnPiece(): void
@@ -170,9 +171,9 @@ class GameTest extends TestCase
 
         $game->move(new Position('g7'), new Position('g8'), PieceType::QUEEN);
 
-        $board = $game->getBoard();
-        $this->assertFalse($board->fieldHasPiece(new Position('g7')));
-        $this->assertEquals(PieceType::QUEEN, $board->getPiece(new Position('g8'))->type);
+        $board = $game->board();
+        $this->assertNull($board->pieceAt(new Position('g7')));
+        $this->assertEquals(PieceType::QUEEN, $board->pieceAt(new Position('g8'))->type);
 
         $eventClasses = array_map(get_class(...), $game->consumeAggregateEvents());
         $this->assertContains(PiecePromoted::class, $eventClasses);
@@ -201,11 +202,11 @@ class GameTest extends TestCase
 
         $replayed = $this->replay($events);
 
-        $this->assertEquals($game->getBoard()->toFen(), $replayed->getBoard()->toFen());
-        $this->assertEquals($game->getActivePlayer(), $replayed->getActivePlayer());
-        $this->assertEquals($game->getStatus(), $replayed->getStatus());
-        $this->assertEquals($game->getCastlingRights(), $replayed->getCastlingRights());
-        $this->assertEquals($game->getEnPassantTarget(), $replayed->getEnPassantTarget());
+        $this->assertEquals($game->board()->toFen(), $replayed->board()->toFen());
+        $this->assertEquals($game->activePlayer(), $replayed->activePlayer());
+        $this->assertEquals($game->status(), $replayed->status());
+        $this->assertEquals($game->castlingRights(), $replayed->castlingRights());
+        $this->assertEquals($game->enPassantTarget(), $replayed->enPassantTarget());
         $this->assertEquals($game->getAggregateVersion(), $replayed->getAggregateVersion());
     }
 
@@ -216,7 +217,7 @@ class GameTest extends TestCase
 
         $replayed = $this->replay($game->consumeAggregateEvents());
 
-        $this->assertEquals($fen, $replayed->getBoard()->toFen());
+        $this->assertEquals($fen, $replayed->board()->toFen());
     }
 
     private function createGame(string $fen): Game

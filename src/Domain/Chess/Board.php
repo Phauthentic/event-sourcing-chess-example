@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domain\Chess;
 
+use App\Domain\Chess\Exception\ChessDomainException;
+use App\Domain\Chess\Exception\NoPieceOnSquare;
+
 class Board
 {
     public const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
@@ -36,6 +39,79 @@ class Board
         }
 
         return implode('/', $ranks);
+    }
+
+    public function pieceAt(Position $position): ?Piece
+    {
+        return $this->fields[$position->position];
+    }
+
+    public function place(Position $position, Piece $piece): void
+    {
+        $this->fields[$position->position] = $piece;
+    }
+
+    public function remove(Position $position): void
+    {
+        $this->fields[$position->position] = null;
+    }
+
+    public function move(Position $from, Position $to): void
+    {
+        $piece = $this->pieceAt($from);
+        if ($piece === null) {
+            throw NoPieceOnSquare::at($from);
+        }
+
+        $this->fields[$to->position] = $piece;
+        $this->fields[$from->position] = null;
+    }
+
+    public function pieceCount(?Side $side = null): int
+    {
+        $pieces = array_filter(
+            $this->fields,
+            fn(?Piece $piece) => $piece !== null && ($side === null || $piece->side === $side)
+        );
+
+        return count($pieces);
+    }
+
+    public function kingPosition(Side $side): Position
+    {
+        foreach ($this->fields as $position => $piece) {
+            if ($piece !== null && $piece->type === PieceType::KING && $piece->side === $side) {
+                return Position::fromString($position);
+            }
+        }
+
+        throw new ChessDomainException("King not found for side {$side->value}");
+    }
+
+    public function isPathClear(Position $from, Position $to): bool
+    {
+        if (!$from->isStraight($to) && !$from->isDiagonal($to)) {
+            // Not a straight or diagonal move
+            return false;
+        }
+
+        $fileStep = $from->fileDistanceTo($to) <=> 0;
+        $rankStep = $from->rankDistanceTo($to) <=> 0;
+
+        $currentFile = $from->fileIndex() + $fileStep;
+        $currentRank = $from->rankIndex() + $rankStep;
+
+        while ($currentFile !== $to->fileIndex() || $currentRank !== $to->rankIndex()) {
+            $position = new Position(chr($currentFile + ord('a')) . ($currentRank + 1));
+            if ($this->pieceAt($position) !== null) {
+                return false;
+            }
+
+            $currentFile += $fileStep;
+            $currentRank += $rankStep;
+        }
+
+        return true;
     }
 
     private function rankToFen(int $rank): string
@@ -83,13 +159,12 @@ class Board
                 continue;
             }
 
-            $position = new Position(chr(ord('a') + $fileIndex) . $rank);
-            $fields[$position->position] = self::pieceFromFenChar($char, $position);
+            $fields[chr(ord('a') + $fileIndex) . $rank] = self::pieceFromFenChar($char);
             $fileIndex++;
         }
     }
 
-    private static function pieceFromFenChar(string $char, Position $position): Piece
+    private static function pieceFromFenChar(string $char): Piece
     {
         $type = match (strtoupper($char)) {
             'P' => PieceType::PAWN,
@@ -98,11 +173,11 @@ class Board
             'R' => PieceType::ROOK,
             'Q' => PieceType::QUEEN,
             'K' => PieceType::KING,
-            default => throw new \InvalidArgumentException('Invalid FEN piece character: ' . $char),
+            default => throw new ChessDomainException('Invalid FEN piece character: ' . $char),
         };
         $side = ctype_upper($char) ? Side::WHITE : Side::BLACK;
 
-        return new Piece($side, $type, $position);
+        return new Piece($type, $side);
     }
 
     private static function pieceToFenChar(Piece $piece): string
@@ -118,147 +193,10 @@ class Board
     private static function emptyFields(): array
     {
         $fields = [];
-        for ($rank = 1; $rank <= 8; $rank++) {
-            foreach (self::FILES as $file) {
-                $fields[$file . $rank] = null;
-            }
+        foreach (Position::all() as $position) {
+            $fields[$position->position] = null;
         }
 
         return $fields;
-    }
-
-    public function removePiece(Position $position): void
-    {
-        $this->fields[$position->position] = null;
-    }
-
-    public function placePiece(Piece $piece, Position $position): void
-    {
-        $this->fields[$position->position] = $piece;
-    }
-
-    public function getPiece(Position $position): Piece
-    {
-        $piece = $this->fields[$position->position];
-        if (!$piece instanceof Piece) {
-            throw new \InvalidArgumentException('No piece at the given position.');
-        }
-
-        return $piece;
-    }
-
-    public function fieldHasPiece(Position $position): bool
-    {
-        return $this->fields[$position->position] instanceof Piece;
-    }
-
-    public function fieldHasPawn(Position $position): ?Piece
-    {
-        $piece = $this->fields[$position->position];
-        return ($piece instanceof Piece && $piece->type === PieceType::PAWN) ? $piece : null;
-    }
-
-    public function getNumberOfPieces(?Side $side = null): int
-    {
-        $pieces = array_filter($this->fields, fn($p) => $p instanceof Piece);
-        if ($side === null) {
-            return count($pieces);
-        }
-
-        return count(
-            array_filter(
-                $pieces,
-                fn(Piece $piece) => $piece->side === $side
-            )
-        );
-    }
-
-    public function movePiece(Piece $piece, Position $to): void
-    {
-        $this->fields[$to->position] = $piece;
-        $this->fields[$piece->position->position] = null;
-        $piece->setPosition($to);
-    }
-
-    public function isPathClear(Position $from, Position $to): bool
-    {
-        if (!$from->isStraight($to) && !$from->isDiagonal($to)) {
-            // Not a straight or diagonal move
-            return false;
-        }
-
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
-
-        $fileStep = $fileDelta === 0 ? 0 : ($fileDelta > 0 ? 1 : -1);
-        $rankStep = $rankDelta === 0 ? 0 : ($rankDelta > 0 ? 1 : -1);
-
-        $currentFile = $from->fileIndex() + $fileStep;
-        $currentRank = $from->rankIndex() + $rankStep;
-
-        $endFile = $to->fileIndex();
-        $endRank = $to->rankIndex();
-
-        while ($currentFile !== $endFile || $currentRank !== $endRank) {
-            $position = new Position(chr($currentFile + ord('a')) . ($currentRank + 1));
-            if ($this->fieldHasPiece($position)) {
-                return false;
-            }
-
-            $currentFile += $fileStep;
-            $currentRank += $rankStep;
-        }
-
-        return true;
-    }
-
-    public function getKingPosition(Side $side): Position
-    {
-        foreach ($this->fields as $position => $piece) {
-            if ($piece instanceof Piece &&
-                $piece->type === PieceType::KING &&
-                $piece->side === $side) {
-                return Position::fromString($position);
-            }
-        }
-
-        throw new \RuntimeException("King not found for side {$side->value}");
-    }
-
-    public function clone(): Board
-    {
-        $cloned = new Board();
-
-        // Clear the cloned board and copy pieces
-        foreach ($cloned->fields as $position => $value) {
-            $cloned->fields[$position] = null;
-        }
-
-        foreach ($this->fields as $position => $piece) {
-            if ($piece instanceof Piece) {
-                $cloned->fields[$position] = new Piece(
-                    $piece->side,
-                    $piece->type,
-                    Position::fromString($position)
-                );
-            }
-        }
-
-        return $cloned;
-    }
-
-    /**
-     * Get all positions on the board (useful for iterating through all squares).
-     *
-     * @return Position[]
-     */
-    public function getAllPositions(): array
-    {
-        $positions = [];
-        for ($rank = 1; $rank <= 8; $rank++) {
-            for ($file = 'a'; $file <= 'h'; $file++) {
-                $positions[] = new Position($file . $rank);
-            }
-        }
-        return $positions;
     }
 }

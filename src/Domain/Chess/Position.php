@@ -4,21 +4,15 @@ declare(strict_types=1);
 
 namespace App\Domain\Chess;
 
-/**
- *
- */
+use App\Domain\Chess\Exception\InvalidPosition;
+
 class Position
 {
     public function __construct(
         public readonly string $position,
     ) {
-        $this->assertPositionIsInRange($position);
-    }
-
-    private function assertPositionIsInRange($position): void
-    {
-        if (!preg_match('/^([a-h][1-8])$/', $position, $matches)) {
-            throw new \InvalidArgumentException('Invalid position: ' . $position);
+        if (!preg_match('/^[a-h][1-8]$/', $position)) {
+            throw InvalidPosition::fromString($position);
         }
     }
 
@@ -52,12 +46,14 @@ class Position
         return $this->rank() - 1;
     }
 
-    public function distanceTo(Position $other): array
+    public function fileDistanceTo(Position $other): int
     {
-        return [
-            $other->fileIndex() - $this->fileIndex(),
-            $other->rankIndex() - $this->rankIndex(),
-        ];
+        return $other->fileIndex() - $this->fileIndex();
+    }
+
+    public function rankDistanceTo(Position $other): int
+    {
+        return $other->rankIndex() - $this->rankIndex();
     }
 
     public function isSameFile(Position $other): bool
@@ -72,8 +68,9 @@ class Position
 
     public function isDiagonal(Position $other): bool
     {
-        [$fileDelta, $rankDelta] = $this->distanceTo($other);
-        return abs($fileDelta) === abs($rankDelta) && $fileDelta !== 0;
+        $fileDelta = $this->fileDistanceTo($other);
+
+        return $fileDelta !== 0 && abs($fileDelta) === abs($this->rankDistanceTo($other));
     }
 
     public function isStraight(Position $other): bool
@@ -83,10 +80,23 @@ class Position
 
     public function isKnightMove(Position $other): bool
     {
-        [$fileDelta, $rankDelta] = $this->distanceTo($other);
-        $fileAbs = abs($fileDelta);
-        $rankAbs = abs($rankDelta);
+        $fileAbs = abs($this->fileDistanceTo($other));
+        $rankAbs = abs($this->rankDistanceTo($other));
 
         return ($fileAbs === 2 && $rankAbs === 1) || ($fileAbs === 1 && $rankAbs === 2);
+    }
+
+    /**
+     * All 64 board positions, a1 through h8.
+     *
+     * @return \Generator<int, Position>
+     */
+    public static function all(): \Generator
+    {
+        for ($rank = 1; $rank <= 8; $rank++) {
+            foreach (['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as $file) {
+                yield new self($file . $rank);
+            }
+        }
     }
 }

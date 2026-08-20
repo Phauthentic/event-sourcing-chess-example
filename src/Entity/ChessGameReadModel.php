@@ -17,6 +17,9 @@ class ChessGameReadModel
     #[ORM\Column(type: 'string', length: 36)]
     private string $gameId;
 
+    /**
+     * @var array<string, array{type: string, side: string, symbol: string}|null>
+     */
     #[ORM\Column(type: 'json')]
     private array $board = [];
 
@@ -51,11 +54,17 @@ class ChessGameReadModel
         return $this->gameId;
     }
 
+    /**
+     * @return array<string, array{type: string, side: string, symbol: string}|null>
+     */
     public function getBoard(): array
     {
         return $this->board;
     }
 
+    /**
+     * @param array<string, array{type: string, side: string, symbol: string}|null> $board
+     */
     public function setBoard(array $board): void
     {
         $this->board = $board;

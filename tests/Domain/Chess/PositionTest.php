@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Domain\Chess;
 
+use App\Domain\Chess\Exception\InvalidPosition;
 use App\Domain\Chess\Position;
 use PHPUnit\Framework\TestCase;
 
@@ -38,14 +39,25 @@ class PositionTest extends TestCase
         $this->assertEquals(3, $position->rankIndex()); // 4th rank (0-indexed = 3)
     }
 
-    public function testDistanceTo(): void
+    public function testDistances(): void
     {
         $from = new Position('e4');
         $to = new Position('g6');
 
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
-        $this->assertEquals(2, $fileDelta); // g(6) - e(4) = 2
-        $this->assertEquals(2, $rankDelta); // 6 - 4 = 2
+        $this->assertEquals(2, $from->fileDistanceTo($to)); // g(6) - e(4) = 2
+        $this->assertEquals(2, $from->rankDistanceTo($to)); // 6 - 4 = 2
+        $this->assertEquals(-2, $to->fileDistanceTo($from));
+        $this->assertEquals(-2, $to->rankDistanceTo($from));
+    }
+
+    public function testAllYieldsEverySquareOnce(): void
+    {
+        $positions = array_map(fn(Position $position) => $position->position, iterator_to_array(Position::all()));
+
+        $this->assertCount(64, $positions);
+        $this->assertCount(64, array_unique($positions));
+        $this->assertContains('a1', $positions);
+        $this->assertContains('h8', $positions);
     }
 
     public function testIsSameFile(): void
@@ -114,7 +126,7 @@ class PositionTest extends TestCase
 
     public function testInvalidPosition(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidPosition::class);
         new Position('i9');
     }
 

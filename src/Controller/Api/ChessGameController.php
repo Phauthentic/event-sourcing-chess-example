@@ -63,8 +63,6 @@ class ChessGameController
             return new JsonResponse(['error' => $e->getMessage()], 400);
         } catch (NotFoundHttpException $e) {
             return new JsonResponse(['error' => 'Game not found'], 404);
-        } catch (\InvalidArgumentException $e) {
-            return new JsonResponse(['error' => $e->getMessage()], 400);
         }
     }
 

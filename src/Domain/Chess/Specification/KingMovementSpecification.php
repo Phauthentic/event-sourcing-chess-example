@@ -18,7 +18,8 @@ class KingMovementSpecification implements PieceMovementSpecification
     public function isSatisfiedBy(Piece $piece, Position $from, Position $to, Board $board): bool
     {
         // Kings move exactly 1 square in any direction
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
+        $fileDelta = $from->fileDistanceTo($to);
+        $rankDelta = $from->rankDistanceTo($to);
 
         return abs($fileDelta) <= 1 && abs($rankDelta) <= 1 && ($fileDelta !== 0 || $rankDelta !== 0);
     }

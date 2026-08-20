@@ -15,43 +15,47 @@ class CastlingRights
         public readonly bool $whiteQueenside,
         public readonly bool $blackKingside,
         public readonly bool $blackQueenside,
-    ) {}
+    ) {
+    }
 
     public static function initial(): self
     {
         return new self(true, true, true, true);
     }
 
-    public function revokeForSide(Side $side, string $type): self
+    public function revokeForSide(Side $side, CastlingSide $castlingSide): self
     {
+        $revokeKingside = $castlingSide !== CastlingSide::QUEENSIDE;
+        $revokeQueenside = $castlingSide !== CastlingSide::KINGSIDE;
+
         return match ($side) {
-            Side::WHITE => match ($type) {
-                'kingside' => new self(false, $this->whiteQueenside, $this->blackKingside, $this->blackQueenside),
-                'queenside' => new self($this->whiteKingside, false, $this->blackKingside, $this->blackQueenside),
-                'both' => new self(false, false, $this->blackKingside, $this->blackQueenside),
-                default => $this,
-            },
-            Side::BLACK => match ($type) {
-                'kingside' => new self($this->whiteKingside, $this->whiteQueenside, false, $this->blackQueenside),
-                'queenside' => new self($this->whiteKingside, $this->whiteQueenside, $this->blackKingside, false),
-                'both' => new self($this->whiteKingside, $this->whiteQueenside, false, false),
-                default => $this,
-            },
+            Side::WHITE => new self(
+                $this->whiteKingside && !$revokeKingside,
+                $this->whiteQueenside && !$revokeQueenside,
+                $this->blackKingside,
+                $this->blackQueenside
+            ),
+            Side::BLACK => new self(
+                $this->whiteKingside,
+                $this->whiteQueenside,
+                $this->blackKingside && !$revokeKingside,
+                $this->blackQueenside && !$revokeQueenside
+            ),
         };
     }
 
-    public function hasRights(Side $side, string $type): bool
+    public function hasRights(Side $side, CastlingSide $castlingSide): bool
     {
         return match ($side) {
-            Side::WHITE => match ($type) {
-                'kingside' => $this->whiteKingside,
-                'queenside' => $this->whiteQueenside,
-                default => false,
+            Side::WHITE => match ($castlingSide) {
+                CastlingSide::KINGSIDE => $this->whiteKingside,
+                CastlingSide::QUEENSIDE => $this->whiteQueenside,
+                CastlingSide::BOTH => $this->whiteKingside && $this->whiteQueenside,
             },
-            Side::BLACK => match ($type) {
-                'kingside' => $this->blackKingside,
-                'queenside' => $this->blackQueenside,
-                default => false,
+            Side::BLACK => match ($castlingSide) {
+                CastlingSide::KINGSIDE => $this->blackKingside,
+                CastlingSide::QUEENSIDE => $this->blackQueenside,
+                CastlingSide::BOTH => $this->blackKingside && $this->blackQueenside,
             },
         };
     }

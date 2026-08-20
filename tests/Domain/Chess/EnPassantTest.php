@@ -33,25 +33,25 @@ class EnPassantTest extends TestCase
         // White captures en passant: e5 pawn takes on d6
         $game->move(new Position('e5'), new Position('d6'));
 
-        $board = $game->getBoard();
-        $this->assertTrue($board->fieldHasPiece(new Position('d6')));
-        $this->assertEquals(Side::WHITE, $board->getPiece(new Position('d6'))->side);
-        $this->assertEquals(PieceType::PAWN, $board->getPiece(new Position('d6'))->type);
+        $board = $game->board();
+        $this->assertNotNull($board->pieceAt(new Position('d6')));
+        $this->assertEquals(Side::WHITE, $board->pieceAt(new Position('d6'))->side);
+        $this->assertEquals(PieceType::PAWN, $board->pieceAt(new Position('d6'))->type);
 
         // The captured black pawn is removed from d5 and the white pawn left e5
-        $this->assertFalse($board->fieldHasPiece(new Position('d5')));
-        $this->assertFalse($board->fieldHasPiece(new Position('e5')));
+        $this->assertNull($board->pieceAt(new Position('d5')));
+        $this->assertNull($board->pieceAt(new Position('e5')));
     }
 
     public function testEnPassantTargetSetAfterDoublePawnMove(): void
     {
         $game = $this->createGameWithDefaultBoard();
 
-        $this->assertTrue($game->getBoard()->fieldHasPiece(new Position('e2')));
+        $this->assertNotNull($game->board()->pieceAt(new Position('e2')));
 
         $game->move(new Position('e2'), new Position('e4'));
 
-        $this->assertEquals('e3', $game->getEnPassantTarget()?->position);
+        $this->assertEquals('e3', $game->enPassantTarget()?->position);
     }
 
     public function testEnPassantTargetClearedAfterNextMove(): void
@@ -60,12 +60,12 @@ class EnPassantTest extends TestCase
 
         $game->move(new Position('e2'), new Position('e4'));
 
-        $this->assertNotNull($game->getEnPassantTarget());
+        $this->assertNotNull($game->enPassantTarget());
 
         // Black makes a move (not en passant)
         $game->move(new Position('e7'), new Position('e6'));
 
-        $this->assertNull($game->getEnPassantTarget());
+        $this->assertNull($game->enPassantTarget());
     }
 
     private function createGameWithDefaultBoard(): Game

@@ -19,49 +19,29 @@ class PawnMovementSpecification implements PieceMovementSpecification
 {
     public function isSatisfiedBy(Piece $piece, Position $from, Position $to, Board $board): bool
     {
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
+        $forward = $piece->side === Side::WHITE ? 1 : -1;
+        $startRank = $piece->side === Side::WHITE ? 2 : 7;
 
-        return match ($piece->side) {
-            Side::WHITE => $this->isValidWhitePawnMove($fileDelta, $rankDelta, $from, $to, $board),
-            Side::BLACK => $this->isValidBlackPawnMove($fileDelta, $rankDelta, $from, $to, $board),
-        };
-    }
+        $fileDelta = $from->fileDistanceTo($to);
+        $rankDelta = $from->rankDistanceTo($to);
 
-    private function isValidWhitePawnMove(int $fileDelta, int $rankDelta, Position $from, Position $to, Board $board): bool
-    {
-        // White pawns move "up" (increasing rank)
+        // Diagonal capture
+        if (abs($fileDelta) === 1) {
+            return $rankDelta === $forward && $board->pieceAt($to) !== null;
+        }
 
         // Forward movement (no capture)
-        if ($fileDelta === 0 && !$board->fieldHasPiece($to) && $rankDelta === 1) {
+        if ($fileDelta !== 0 || $board->pieceAt($to) !== null) {
+            return false;
+        }
+
+        if ($rankDelta === $forward) {
             return true;
         }
 
-        if ($fileDelta === 0 && !$board->fieldHasPiece($to) && $rankDelta === 2 && $from->rank() === 2) {
-            $intermediate = new Position($from->file() . '3');
-
-            return !$board->fieldHasPiece($intermediate);
-        }
-
-        // Diagonal capture
-        return abs($fileDelta) === 1 && $rankDelta === 1 && $board->fieldHasPiece($to);
-    }
-
-    private function isValidBlackPawnMove(int $fileDelta, int $rankDelta, Position $from, Position $to, Board $board): bool
-    {
-        // Black pawns move "down" (decreasing rank)
-
-        // Forward movement (no capture)
-        if ($fileDelta === 0 && !$board->fieldHasPiece($to) && $rankDelta === -1) {
-            return true;
-        }
-
-        if ($fileDelta === 0 && !$board->fieldHasPiece($to) && $rankDelta === -2 && $from->rank() === 7) {
-            $intermediate = new Position($from->file() . '6');
-
-            return !$board->fieldHasPiece($intermediate);
-        }
-
-        // Diagonal capture
-        return abs($fileDelta) === 1 && $rankDelta === -1 && $board->fieldHasPiece($to);
+        // Double step from the starting rank, intermediate square must be free
+        return $rankDelta === 2 * $forward
+            && $from->rank() === $startRank
+            && $board->pieceAt(new Position($from->file() . ($startRank + $forward))) === null;
     }
 }
