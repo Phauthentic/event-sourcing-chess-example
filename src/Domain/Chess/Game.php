@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domain\Chess;
 
-use App\Domain\Chess\Board;
-use App\Domain\Chess\CastlingRights;
 use App\Domain\Chess\Event\CastlingPerformed;
 use App\Domain\Chess\Event\CheckAnnounced;
 use App\Domain\Chess\Event\Checkmate;
@@ -18,13 +16,7 @@ use App\Domain\Chess\Event\PieceMoved;
 use App\Domain\Chess\Event\PiecePromoted;
 use App\Domain\Chess\Event\Stalemate;
 use App\Domain\Chess\Exception\ChessGameException;
-use App\Domain\Chess\GameId;
-use App\Domain\Chess\GameStatus;
-use App\Domain\Chess\PieceType;
-use App\Domain\Chess\Player;
-use App\Domain\Chess\Position;
 use App\Domain\Chess\Service\MoveValidator;
-use App\Domain\Chess\Side;
 use Phauthentic\EventSourcing\Aggregate\AbstractEventSourcedAggregate;
 use Phauthentic\EventSourcing\Aggregate\Attribute\AggregateIdentifier;
 use Phauthentic\EventSourcing\Aggregate\Attribute\AggregateVersion;
@@ -39,6 +31,9 @@ class Game extends AbstractEventSourcedAggregate
     #[AggregateIdentifier]
     protected string $aggregateId = '';
 
+    /**
+     * @var array<int, object>
+     */
     #[DomainEvents]
     protected array $domainEvents = [];
 
@@ -52,164 +47,218 @@ class Game extends AbstractEventSourcedAggregate
     private ?Player $activePlayer = null;
     private ?CastlingRights $castlingRights = null;
     private ?Position $enPassantTarget = null;
-    private GameStatus $status;
+    private GameStatus $status = GameStatus::IN_PROGRESS;
+    private ?MoveValidator $moveValidator = null;
 
     private function __construct()
     {
     }
 
-    public static function create(GameId $gameId, Player $playerOne, Player $playerTwo, Board $board, bool $skipEvents = false): self
+    public static function create(GameId $gameId, Player $playerOne, Player $playerTwo, Board $board): self
     {
+        self::assertPlayersAreNotTheSame($playerOne, $playerTwo);
+        self::assertPlayersAreNotOnTheSameSide($playerOne, $playerTwo);
+
         $that = new self();
-        $that->assertPlayersDonNotHaveTheSameSide($playerOne, $playerTwo);
-        $that->assertPlayersAreNotTheSame($playerOne, $playerTwo);
-        $that->assertPlayersAreNotOnTheSameSide($playerOne, $playerTwo);
-
         $that->aggregateId = (string) $gameId;
-        $that->gameId = $gameId;
-        $that->playerOne = $playerOne;
-        $that->playerTwo = $playerTwo;
-        $that->board = $board;
-        $that->activePlayer = $playerOne->side === Side::WHITE ? $playerOne : $playerTwo;
-        $that->castlingRights = CastlingRights::initial();
-        $that->enPassantTarget = null;
-        $that->status = GameStatus::IN_PROGRESS;
-
-        if (!$skipEvents) {
-            $that->recordThat(new GameStarted(
-                gameId: $gameId->id,
-                playerOneId: $playerOne->name,
-                playerTwoId: $playerTwo->name,
-                playerOneSide: $playerOne->side->value,
-                playerTwoSide: $playerTwo->side->value
-            ));
-        }
+        $that->recordAndApply(new GameStarted(
+            gameId: $gameId->id,
+            playerOneId: $playerOne->name,
+            playerTwoId: $playerTwo->name,
+            playerOneSide: $playerOne->side->value,
+            playerTwoSide: $playerTwo->side->value,
+            fen: $board->toFen()
+        ));
 
         return $that;
     }
 
-    private function assertPlayersAreNotTheSame(Player $playerOne, Player $playerTwo): void
+    private static function assertPlayersAreNotTheSame(Player $playerOne, Player $playerTwo): void
     {
         if ($playerOne->name === $playerTwo->name) {
             throw ChessGameException::becausePlayersMustNotHaveTheSameName();
         }
     }
 
-    private function assertPlayersAreNotOnTheSameSide(Player $playerOne, Player $playerTwo): void
+    private static function assertPlayersAreNotOnTheSameSide(Player $playerOne, Player $playerTwo): void
     {
         if ($playerOne->side === $playerTwo->side) {
             throw ChessGameException::becausePlayersMustNotHaveTheSameSide();
         }
     }
 
-    private function assertPlayersDonNotHaveTheSameSide(Player $playerOne, Player $playerTwo): void
+    /**
+     * Records the event for persistence and applies it to the aggregate state.
+     *
+     * recordThat() already increments the aggregate version, so the when* handler
+     * is invoked directly instead of via applyEvent(), which would bump the
+     * version a second time. This keeps the write path and the replay path
+     * running through the exact same state transitions.
+     */
+    private function recordAndApply(object $event): void
     {
-        assert($playerOne->side !== $playerTwo->side, 'Players must not have the same side!');
+        $this->recordThat($event);
+        $this->{$this->getEventNameFromEvent($event)}($event);
     }
 
     public function announceCheck(): void
     {
-        $this->recordThat(new CheckAnnounced(gameId: (string) $this->getGameId()));
-        $this->endTurn();
+        $this->recordAndApply(new CheckAnnounced(gameId: (string) $this->getGameId()));
     }
 
     public function offerDraw(): void
     {
-        $this->recordThat(new DrawOffered(gameId: (string) $this->getGameId()));
+        $this->recordAndApply(new DrawOffered(gameId: (string) $this->getGameId()));
     }
 
     public function acceptDraw(): void
     {
-        $this->recordThat(new DrawAccepted(gameId: (string) $this->getGameId()));
-        $this->recordThat(new GameFinished(
+        $this->recordAndApply(new DrawAccepted(gameId: (string) $this->getGameId()));
+        $this->recordAndApply(new GameFinished(
             gameId: (string) $this->getGameId(),
             status: GameStatus::DRAW_AGREED->value,
             winner: null,
             reason: 'draw agreed'
         ));
-        $this->status = GameStatus::DRAW_AGREED;
     }
 
     public function move(Position $from, Position $to, ?PieceType $promotion = null): void
     {
-        // Check if game is still in progress
         if ($this->status !== GameStatus::IN_PROGRESS) {
             throw ChessGameException::becauseGameIsNotInProgress();
         }
 
-        // Validate the move using domain service
-        $moveValidator = new MoveValidator();
-        if (!$moveValidator->isMoveLegal($this, $from, $to, $promotion)) {
+        if (!$this->moveValidator()->isMoveLegal($this, $from, $to, $promotion)) {
             throw ChessGameException::becauseInvalidMove();
         }
 
-        // Execute the move
-        $piece = $this->board->getPiece($from);
-        $isCapture = $this->board->fieldHasPiece($to);
+        $piece = $this->getBoard()->getPiece($from);
 
-        // Check if this is a castling move
         match (true) {
-            $this->isCastlingMove($piece, $from, $to) => $this->performCastling($from, $to),
-            $this->isEnPassantCapture($piece, $from, $to) => $this->performEnPassantCapture($from, $to),
-            $isCapture => $this->capturePiece($from, $to),
-            default => $this->movePiece($from, $to, $promotion),
+            $this->isCastlingMove($piece, $from, $to) => $this->recordCastling($piece, $from, $to),
+            $this->isEnPassantCapture($piece, $from, $to) => $this->recordEnPassantCapture($piece, $from, $to),
+            default => $this->recordStandardMove($piece, $from, $to, $promotion),
         };
 
-        // Update castling rights if king or rook moved
-        $this->updateCastlingRights($piece, $from);
-
-        // Set en passant target if pawn moved 2 squares
-        $this->updateEnPassantTarget($piece, $from, $to);
-
-        // Check for check/checkmate/stalemate
-        $this->checkGameEndConditions();
-
-        $this->endTurn();
+        $this->recordGameEndConditions($piece->side);
     }
 
-    private function movePiece(Position $from, Position $to, ?PieceType $promotion = null): void
+    private function recordStandardMove(Piece $piece, Position $from, Position $to, ?PieceType $promotion): void
     {
-        $piece = $this->board->getPiece($from);
-        $this->assertActivePlayerOwnsThePiece($piece);
-        $this->board->movePiece($piece, $to);
+        $board = $this->getBoard();
+        if ($board->fieldHasPiece($to)) {
+            $this->recordAndApply(new PieceCaptured(
+                gameId: (string) $this->getGameId(),
+                pieceType: $piece->type->value,
+                captured: $board->getPiece($to)->type->value,
+                from: $from->position,
+                to: $to->position,
+                isEnPassant: false
+            ));
+        }
 
-        // Handle pawn promotion
         if ($promotion !== null && $piece->type === PieceType::PAWN) {
-            $piece->promote($promotion);
-            $this->recordThat(new PiecePromoted(
+            $this->recordAndApply(new PiecePromoted(
                 gameId: (string) $this->getGameId(),
                 from: $from->position,
                 to: $to->position,
                 promotedTo: $promotion->value
             ));
+
+            return;
         }
 
-        if ($promotion === null || $piece->type !== PieceType::PAWN) {
-            $this->recordThat(new PieceMoved(
-                gameId: (string) $this->getGameId(),
-                pieceType: $piece->type->value,
-                from: $from->position,
-                to: $to->position
-            ));
+        $this->recordAndApply(new PieceMoved(
+            gameId: (string) $this->getGameId(),
+            pieceType: $piece->type->value,
+            from: $from->position,
+            to: $to->position
+        ));
+    }
+
+    private function recordEnPassantCapture(Piece $piece, Position $from, Position $to): void
+    {
+        $this->recordAndApply(new PieceCaptured(
+            gameId: (string) $this->getGameId(),
+            pieceType: $piece->type->value,
+            captured: PieceType::PAWN->value,
+            from: $from->position,
+            to: $to->position,
+            isEnPassant: true
+        ));
+        $this->recordAndApply(new PieceMoved(
+            gameId: (string) $this->getGameId(),
+            pieceType: $piece->type->value,
+            from: $from->position,
+            to: $to->position
+        ));
+    }
+
+    private function recordCastling(Piece $king, Position $kingFrom, Position $kingTo): void
+    {
+        $isKingside = $kingTo->fileIndex() > $kingFrom->fileIndex();
+        $rank = $kingFrom->rank();
+
+        $this->recordAndApply(new CastlingPerformed(
+            gameId: (string) $this->getGameId(),
+            side: $king->side->value,
+            type: $isKingside ? 'kingside' : 'queenside',
+            kingFrom: $kingFrom->position,
+            kingTo: $kingTo->position,
+            rookFrom: ($isKingside ? 'h' : 'a') . $rank,
+            rookTo: ($isKingside ? 'f' : 'd') . $rank
+        ));
+    }
+
+    private function recordGameEndConditions(Side $moverSide): void
+    {
+        $board = $this->getBoard();
+        $opponentSide = $moverSide === Side::WHITE ? Side::BLACK : Side::WHITE;
+        $isInCheck = $board->isSquareAttackedBy($board->getKingPosition($opponentSide), $moverSide);
+        $opponentHasMoves = $this->hasLegalMoves($opponentSide);
+
+        if ($isInCheck && !$opponentHasMoves) {
+            $this->recordCheckmate($moverSide);
+
+            return;
+        }
+
+        if ($isInCheck) {
+            $this->recordAndApply(new CheckAnnounced(gameId: (string) $this->getGameId()));
+
+            return;
+        }
+
+        if (!$opponentHasMoves) {
+            $this->recordStalemate();
         }
     }
 
-    private function capturePiece(Position $from, Position $to): void
+    private function recordCheckmate(Side $winnerSide): void
     {
-        $piece = $this->board->getPiece($from);
-        $capturedPiece = $this->board->getPiece($to);
-        $this->assertActivePlayerOwnsThePiece($piece);
+        $loserSide = $winnerSide === Side::WHITE ? Side::BLACK : Side::WHITE;
 
-        $this->board->removePiece($to);
-        $this->board->movePiece($piece, $to);
-
-        $this->recordThat(new PieceCaptured(
+        $this->recordAndApply(new Checkmate(
             gameId: (string) $this->getGameId(),
-            pieceType: $piece->type->value,
-            captured: $capturedPiece->type->value,
-            from: $from->position,
-            to: $to->position,
-            isEnPassant: false
+            winnerSide: $winnerSide->value,
+            loserSide: $loserSide->value
+        ));
+        $this->recordAndApply(new GameFinished(
+            gameId: (string) $this->getGameId(),
+            status: GameStatus::CHECKMATE->value,
+            winner: $winnerSide->value,
+            reason: 'checkmate'
+        ));
+    }
+
+    private function recordStalemate(): void
+    {
+        $this->recordAndApply(new Stalemate(gameId: (string) $this->getGameId()));
+        $this->recordAndApply(new GameFinished(
+            gameId: (string) $this->getGameId(),
+            status: GameStatus::STALEMATE->value,
+            winner: null,
+            reason: 'stalemate'
         ));
     }
 
@@ -225,49 +274,25 @@ class Game extends AbstractEventSourcedAggregate
         }
 
         [$fileDelta, $rankDelta] = $from->distanceTo($to);
+
         return $rankDelta === 0 && abs($fileDelta) === 2;
     }
 
-    private function performCastling(Position $kingFrom, Position $kingTo): void
+    private function isEnPassantCapture(Piece $piece, Position $from, Position $to): bool
     {
-        $king = $this->board->getPiece($kingFrom);
-        $isKingside = $kingTo->fileIndex() > $kingFrom->fileIndex();
-        $side = $king->side;
+        if ($piece->type !== PieceType::PAWN || $this->enPassantTarget === null) {
+            return false;
+        }
 
-        // Determine rook positions
-        $rookFromFile = $isKingside ? 'h' : 'a';
-        $rookToFile = $isKingside ? 'f' : 'd';
-        $rank = $kingFrom->rank();
+        [$fileDelta] = $from->distanceTo($to);
 
-        $rookFrom = new Position($rookFromFile . $rank);
-        $rookTo = new Position($rookToFile . $rank);
-        $rook = $this->board->getPiece($rookFrom);
-
-        // Move both king and rook
-        $this->board->movePiece($king, $kingTo);
-        $this->board->movePiece($rook, $rookTo);
-
-        // Emit castling event
-        $type = $isKingside ? 'kingside' : 'queenside';
-        $this->recordThat(new CastlingPerformed(
-            gameId: (string) $this->getGameId(),
-            side: $side->value,
-            type: $type,
-            kingFrom: $kingFrom->position,
-            kingTo: $kingTo->position,
-            rookFrom: $rookFrom->position,
-            rookTo: $rookTo->position
-        ));
-
-        // Update castling rights (all rights are now lost)
-        $this->castlingRights = $this->castlingRights->revokeForSide($side, 'both');
+        return abs($fileDelta) === 1 && $to->position === $this->enPassantTarget->position;
     }
 
     private function updateCastlingRights(Piece $piece, Position $from): void
     {
         if ($piece->type === PieceType::KING) {
-            // King moved - revoke all castling rights for this side
-            $this->castlingRights = $this->castlingRights->revokeForSide($piece->side, 'both');
+            $this->castlingRights = $this->getCastlingRights()->revokeForSide($piece->side, 'both');
 
             return;
         }
@@ -276,155 +301,32 @@ class Game extends AbstractEventSourcedAggregate
             return;
         }
 
-        // Rook moved - revoke castling rights for that side
         $isKingsideRook = ($piece->side === Side::WHITE && $from->position === 'h1') ||
                           ($piece->side === Side::BLACK && $from->position === 'h8');
         $type = $isKingsideRook ? 'kingside' : 'queenside';
-        $this->castlingRights = $this->castlingRights->revokeForSide($piece->side, $type);
-    }
-
-    private function isEnPassantCapture(Piece $piece, Position $from, Position $to): bool
-    {
-        if ($piece->type !== PieceType::PAWN) {
-            return false;
-        }
-
-        // Must be moving diagonally to an empty square
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
-        if (abs($fileDelta) !== 1) {
-            return false;
-        }
-
-        $expectedRankDelta = $piece->side === Side::WHITE ? 1 : -1;
-        if ($rankDelta !== $expectedRankDelta) {
-            return false;
-        }
-
-        // Destination must be empty
-        if ($this->board->fieldHasPiece($to)) {
-            return false;
-        }
-
-        // Must match the en passant target
-        $enPassantTarget = $this->enPassantTarget;
-        if ($enPassantTarget === null) {
-            return false;
-        }
-
-        return $to->position === $enPassantTarget->position;
-    }
-
-    private function performEnPassantCapture(Position $from, Position $to): void
-    {
-        $piece = $this->board->getPiece($from);
-
-        // The captured pawn is on the same rank as the capturing pawn, but on the file of the en passant target
-        // For example: if white pawn on d5 captures en passant to c6, the black pawn being captured is on c5
-        $capturedPawnRank = $piece->side === Side::WHITE ? $to->rank() - 1 : $to->rank() + 1;
-        $capturedPawnPosition = new Position($to->file() . $capturedPawnRank);
-
-        if (!$this->board->fieldHasPiece($capturedPawnPosition)) {
-            throw ChessGameException::becauseInvalidEnPassantCapture();
-        }
-
-        $capturedPiece = $this->board->getPiece($capturedPawnPosition);
-
-        // Move the capturing pawn
-        $this->board->movePiece($piece, $to);
-
-        // Remove the captured pawn
-        $this->board->removePiece($capturedPawnPosition);
-
-        $this->recordThat(new PieceCaptured(
-            gameId: (string) $this->getGameId(),
-            pieceType: $piece->type->value,
-            captured: $capturedPiece->type->value,
-            from: $from->position,
-            to: $to->position,
-            isEnPassant: true
-        ));
+        $this->castlingRights = $this->getCastlingRights()->revokeForSide($piece->side, $type);
     }
 
     private function updateEnPassantTarget(Piece $piece, Position $from, Position $to): void
     {
-        if ($piece->type !== PieceType::PAWN) {
+        [, $rankDelta] = $from->distanceTo($to);
+        if ($piece->type !== PieceType::PAWN || abs($rankDelta) !== 2) {
             $this->enPassantTarget = null;
 
             return;
         }
 
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
-
-        if (abs($rankDelta) !== 2) {
-            $this->enPassantTarget = null;
-
-            return;
-        }
-
-        // Pawn moved 2 squares - set en passant target
         $targetRank = $piece->side === Side::WHITE ? $from->rank() + 1 : $from->rank() - 1;
         $this->enPassantTarget = new Position($from->file() . $targetRank);
     }
 
-    private function checkGameEndConditions(): void
-    {
-        $opponentSide = $this->activePlayer->side === Side::WHITE ? Side::BLACK : Side::WHITE;
-
-        $opponentKingPosition = $this->board->getKingPosition($opponentSide);
-
-        // Check if opponent is in check
-        $isInCheck = $this->board->isSquareAttackedBy($opponentKingPosition, $this->activePlayer->side);
-
-        if ($isInCheck) {
-            if (!$this->hasLegalMoves($opponentSide)) {
-                // Checkmate
-                $this->status = GameStatus::CHECKMATE;
-                $winnerSide = $this->activePlayer->side->value;
-                $loserSide = $opponentSide->value;
-
-                $this->recordThat(new Checkmate(
-                    gameId: (string) $this->getGameId(),
-                    winnerSide: $winnerSide,
-                    loserSide: $loserSide
-                ));
-
-                $this->recordThat(new GameFinished(
-                    gameId: (string) $this->getGameId(),
-                    status: GameStatus::CHECKMATE->value,
-                    winner: $winnerSide,
-                    reason: 'checkmate'
-                ));
-
-                return;
-            }
-
-            $this->recordThat(new CheckAnnounced(gameId: (string) $this->getGameId()));
-
-            return;
-        }
-
-        if (!$this->hasLegalMoves($opponentSide)) {
-            $this->status = GameStatus::STALEMATE;
-            $this->recordThat(new Stalemate(gameId: (string) $this->getGameId()));
-            $this->recordThat(new GameFinished(
-                gameId: (string) $this->getGameId(),
-                status: GameStatus::STALEMATE->value,
-                winner: null,
-                reason: 'stalemate'
-            ));
-
-            return;
-        }
-    }
-
     private function hasLegalMoves(Side $side): bool
     {
-        // Create a temporary game with the correct active player
         $tempGame = new self();
         $tempGame->gameId = $this->gameId;
         $tempGame->playerOne = $this->playerOne;
         $tempGame->playerTwo = $this->playerTwo;
-        $tempGame->board = $this->board->clone();
+        $tempGame->board = $this->getBoard()->clone();
         $tempGame->activePlayer = $side === Side::WHITE ? $this->playerOne : $this->playerTwo;
         $tempGame->castlingRights = $this->castlingRights;
         $tempGame->enPassantTarget = $this->enPassantTarget;
@@ -433,16 +335,14 @@ class Game extends AbstractEventSourcedAggregate
         return $this->checkAllPiecesForTheGivenSideForLegalMoves($tempGame, $side);
     }
 
-    private function checkAllPiecesForTheGivenSideForLegalMoves(
-        self $tempGame,
-        Side $side
-    ): bool {
-        foreach ($this->board->getAllPositions() as $fromPosition) {
-            if (!$tempGame->board->fieldHasPiece($fromPosition)) {
+    private function checkAllPiecesForTheGivenSideForLegalMoves(self $tempGame, Side $side): bool
+    {
+        foreach ($this->getBoard()->getAllPositions() as $fromPosition) {
+            if (!$tempGame->getBoard()->fieldHasPiece($fromPosition)) {
                 continue;
             }
 
-            $piece = $tempGame->board->getPiece($fromPosition);
+            $piece = $tempGame->getBoard()->getPiece($fromPosition);
             if ($piece->side !== $side) {
                 continue;
             }
@@ -457,39 +357,35 @@ class Game extends AbstractEventSourcedAggregate
 
     private function hasLegalMoveFromSquare(self $game, Position $fromPosition): bool
     {
-        $moveValidator = new MoveValidator();
+        foreach ($this->getBoard()->getAllPositions() as $toPosition) {
+            if ($fromPosition->position === $toPosition->position) {
+                continue;
+            }
 
-        for ($file = 'a'; $file <= 'h'; $file++) {
-            for ($rank = 1; $rank <= 8; $rank++) {
-                $toPosition = new Position($file . $rank);
-
-                if ($fromPosition->position === $toPosition->position) {
-                    continue;
-                }
-
-                if ($moveValidator->isMoveLegal($game, $fromPosition, $toPosition)) {
-                    return true;
-                }
+            if ($this->moveValidator()->isMoveLegal($game, $fromPosition, $toPosition)) {
+                return true;
             }
         }
 
         return false;
     }
 
-    private function assertActivePlayerOwnsThePiece(Piece $piece): void
+    private function moveValidator(): MoveValidator
     {
-        if ($this->activePlayer->side !== $piece->side) {
-            throw ChessGameException::becauseNotYourTurn();
-        }
+        return $this->moveValidator ??= new MoveValidator();
     }
 
     public function getActivePlayer(): Player
     {
+        \assert($this->activePlayer !== null);
+
         return $this->activePlayer;
     }
 
     public function getBoard(): Board
     {
+        \assert($this->board !== null);
+
         return $this->board;
     }
 
@@ -513,33 +409,14 @@ class Game extends AbstractEventSourcedAggregate
         return $this->status;
     }
 
-    // For testing purposes
-    public function setEnPassantTarget(?Position $target): void
-    {
-        $this->enPassantTarget = $target;
-    }
-
-    // For testing purposes only
-    public function setBoardForTesting(Board $board): void
-    {
-        $this->board = $board;
-    }
-
-    public function setActivePlayerForTesting(Side $side): void
-    {
-        $this->activePlayer = $side === Side::WHITE ? $this->playerOne : $this->playerTwo;
-    }
-
-    public function setStatusForTesting(GameStatus $status): void
-    {
-        $this->status = $status;
-    }
-
     public function getAggregateVersion(): int
     {
         return $this->aggregateVersion;
     }
 
+    /**
+     * @param \Iterator<int, EventInterface>|array<int, EventInterface>|\Generator<int, EventInterface> $events
+     */
     public function applyEventsFromHistory(\Iterator|array|\Generator $events): void
     {
         $eventsArray = $events instanceof \Traversable ? iterator_to_array($events, false) : $events;
@@ -555,8 +432,7 @@ class Game extends AbstractEventSourcedAggregate
         $this->gameId = GameId::fromString($event->gameId);
         $this->playerOne = new Player($event->playerOneId, Side::from(strtolower($event->playerOneSide)));
         $this->playerTwo = new Player($event->playerTwoId, Side::from(strtolower($event->playerTwoSide)));
-        // Always create a new board for proper event sourcing
-        $this->board = new Board();
+        $this->board = Board::fromFen($event->fen);
         $this->activePlayer = $this->playerOne->side === Side::WHITE ? $this->playerOne : $this->playerTwo;
         $this->castlingRights = CastlingRights::initial();
         $this->enPassantTarget = null;
@@ -567,32 +443,55 @@ class Game extends AbstractEventSourcedAggregate
     {
         $from = Position::fromString($event->from);
         $to = Position::fromString($event->to);
-        $piece = $this->board->getPiece($from);
-        $this->board->movePiece($piece, $to);
+        $piece = $this->getBoard()->getPiece($from);
+
+        $this->getBoard()->movePiece($piece, $to);
+        $this->updateCastlingRights($piece, $from);
+        $this->updateEnPassantTarget($piece, $from, $to);
         $this->endTurn();
     }
 
+    /**
+     * Only removes the captured piece. The capturing piece is moved by the
+     * PieceMoved or PiecePromoted event recorded for the same ply.
+     */
     protected function whenPieceCaptured(PieceCaptured $event): void
+    {
+        $capturedSquare = $event->isEnPassant
+            ? new Position($event->to[0] . $event->from[1])
+            : Position::fromString($event->to);
+
+        $this->getBoard()->removePiece($capturedSquare);
+    }
+
+    protected function whenPiecePromoted(PiecePromoted $event): void
     {
         $from = Position::fromString($event->from);
         $to = Position::fromString($event->to);
-        $piece = $this->board->getPiece($from);
-        $this->board->removePiece($to);
-        $this->board->movePiece($piece, $to);
+        $pawn = $this->getBoard()->getPiece($from);
+
+        $this->getBoard()->movePiece($pawn, $to);
+        $pawn->promote(PieceType::from($event->promotedTo));
+        $this->enPassantTarget = null;
+        $this->endTurn();
+    }
+
+    protected function whenCastlingPerformed(CastlingPerformed $event): void
+    {
+        $board = $this->getBoard();
+        $king = $board->getPiece(Position::fromString($event->kingFrom));
+        $rook = $board->getPiece(Position::fromString($event->rookFrom));
+
+        $board->movePiece($king, Position::fromString($event->kingTo));
+        $board->movePiece($rook, Position::fromString($event->rookTo));
+
+        $this->castlingRights = $this->getCastlingRights()->revokeForSide(Side::from($event->side), 'both');
+        $this->enPassantTarget = null;
         $this->endTurn();
     }
 
     protected function whenCheckAnnounced(CheckAnnounced $event): void
     {
-        $this->endTurn();
-    }
-
-    protected function whenPiecePromoted(PiecePromoted $event): void
-    {
-        $position = Position::fromString($event->to);
-        $piece = $this->board->getPiece($position);
-        $piece->promote(PieceType::from($event->promotedTo));
-        $this->endTurn();
     }
 
     protected function whenCheckmate(Checkmate $event): void
@@ -603,23 +502,6 @@ class Game extends AbstractEventSourcedAggregate
     protected function whenStalemate(Stalemate $event): void
     {
         $this->status = GameStatus::STALEMATE;
-    }
-
-    protected function whenCastlingPerformed(CastlingPerformed $event): void
-    {
-        $kingFrom = Position::fromString($event->kingFrom);
-        $kingTo = Position::fromString($event->kingTo);
-        $rookFrom = Position::fromString($event->rookFrom);
-        $rookTo = Position::fromString($event->rookTo);
-
-        $king = $this->board->getPiece($kingFrom);
-        $rook = $this->board->getPiece($rookFrom);
-
-        $this->board->movePiece($king, $kingTo);
-        $this->board->movePiece($rook, $rookTo);
-
-        $this->castlingRights = $this->castlingRights->revokeForSide(Side::from($event->side), 'both');
-        $this->endTurn();
     }
 
     protected function whenDrawOffered(DrawOffered $event): void

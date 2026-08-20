@@ -26,13 +26,4 @@ final class ChessGameException extends ChessDomainException
         return new self('Invalid move');
     }
 
-    public static function becauseInvalidEnPassantCapture(): self
-    {
-        return new self('Invalid en passant capture: no pawn to capture');
-    }
-
-    public static function becauseNotYourTurn(): self
-    {
-        return new self('It is not your turn!');
-    }
 }

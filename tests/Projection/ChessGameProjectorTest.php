@@ -29,7 +29,8 @@ class ChessGameProjectorTest extends TestCase
             playerOneId: 'Alice',
             playerTwoId: 'Bob',
             playerOneSide: 'white',
-            playerTwoSide: 'black'
+            playerTwoSide: 'black',
+            fen: \App\Domain\Chess\Board::START_FEN
         );
 
         $this->assertTrue($this->projector->supports($event));
@@ -59,7 +60,8 @@ class ChessGameProjectorTest extends TestCase
             playerOneId: 'Alice',
             playerTwoId: 'Bob',
             playerOneSide: 'white',
-            playerTwoSide: 'black'
+            playerTwoSide: 'black',
+            fen: \App\Domain\Chess\Board::START_FEN
         );
 
         $this->entityManager
@@ -82,12 +84,6 @@ class ChessGameProjectorTest extends TestCase
 
     public function testProjectsPieceMovedEvent(): void
     {
-        $gameStartedEvent = new GameStarted(
-            gameId: 'game-123',
-            playerOneId: 'Alice',
-            playerTwoId: 'Bob'
-        );
-
         // First create the read model
         $readModel = new ChessGameReadModel('game-123');
         $readModel->setPlayerOneName('Alice');

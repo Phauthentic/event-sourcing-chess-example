@@ -26,6 +26,20 @@ use Phauthentic\EventSourcing\Projection\ResettableProjectorInterface;
  */
 class ChessGameProjector implements ResettableProjectorInterface
 {
+    private const PIECE_NAMES = [
+        'P' => 'pawn',
+        'N' => 'knight',
+        'B' => 'bishop',
+        'R' => 'rook',
+        'Q' => 'queen',
+        'K' => 'king',
+    ];
+
+    private const PIECE_SYMBOLS = [
+        'white' => ['P' => '♙', 'N' => '♘', 'B' => '♗', 'R' => '♖', 'Q' => '♕', 'K' => '♔'],
+        'black' => ['P' => '♟', 'N' => '♞', 'B' => '♝', 'R' => '♜', 'Q' => '♛', 'K' => '♚'],
+    ];
+
     public function __construct(
         private EntityManagerInterface $entityManager
     ) {
@@ -125,33 +139,15 @@ class ChessGameProjector implements ResettableProjectorInterface
 
         $board = $readModel->getBoard();
 
-        if ($event->isEnPassant) {
-            // For en passant, the captured pawn is not at the destination
-            // It's at the same file as destination but different rank
-            $fromPos = $event->from; // e.g., "d5"
-            $toPos = $event->to;     // e.g., "c6"
-            $capturedPos = $toPos[0] . $fromPos[1]; // e.g., "c5"
-
-            // Move capturing piece
-            $board[$toPos] = $board[$fromPos] ?? null;
-            $board[$fromPos] = null;
-
-            // Remove captured piece (en passant pawn)
-            $board[$capturedPos] = null;
-        } else {
-            // Regular capture: remove captured piece and move capturing piece
-            $board[$event->to] = $board[$event->from] ?? null;
-            $board[$event->from] = null;
-        }
+        // Only remove the captured piece. The capturing piece is moved by the
+        // PieceMoved or PiecePromoted event that follows for the same ply,
+        // which also switches the active player.
+        $capturedPos = $event->isEnPassant
+            ? $event->to[0] . $event->from[1] // e.g. d5xc6 e.p. captures on c5
+            : $event->to;
+        $board[$capturedPos] = null;
 
         $readModel->setBoard($board);
-
-        // Switch active player
-        $currentPlayer = $readModel->getActivePlayer();
-        $players = [$readModel->getPlayerOneName(), $readModel->getPlayerTwoName()];
-        $otherPlayer = $players[0] === $currentPlayer ? $players[1] : $players[0];
-        $readModel->setActivePlayer($otherPlayer);
-
         $this->entityManager->flush();
     }
 
@@ -199,9 +195,15 @@ class ChessGameProjector implements ResettableProjectorInterface
 
         $board = $readModel->getBoard();
 
-        // Update the piece at the promotion position
-        if (isset($board[$event->to])) {
-            $board[$event->to]['type'] = strtolower($event->promotedTo);
+        // Move the promoting pawn and replace it with the promoted piece
+        $pawn = $board[$event->from] ?? null;
+        if ($pawn !== null) {
+            $board[$event->from] = null;
+            $board[$event->to] = [
+                'type' => self::PIECE_NAMES[strtoupper($event->promotedTo)] ?? strtolower($event->promotedTo),
+                'side' => $pawn['side'],
+                'symbol' => self::PIECE_SYMBOLS[$pawn['side']][strtoupper($event->promotedTo)] ?? '?',
+            ];
             $readModel->setBoard($board);
         }
 

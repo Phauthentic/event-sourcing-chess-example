@@ -147,6 +147,14 @@ class BoardTest extends TestCase
         $this->assertContains('e4', $positionStrings);
     }
 
+    public function testFenRoundTrip(): void
+    {
+        $this->assertEquals(Board::START_FEN, new Board()->toFen());
+
+        $fen = 'r3k3/3p2P1/8/4P3/8/8/P7/4K2R';
+        $this->assertEquals($fen, Board::fromFen($fen)->toFen());
+    }
+
     public function testRemovePiece(): void
     {
         $board = new Board();

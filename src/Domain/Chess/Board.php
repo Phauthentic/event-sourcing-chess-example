@@ -6,126 +6,125 @@ namespace App\Domain\Chess;
 
 class Board
 {
-    private array $fields = [
-        'a1' => null,
-        'b1' => null,
-        'c1' => null,
-        'd1' => null,
-        'e1' => null,
-        'f1' => null,
-        'g1' => null,
-        'h1' => null,
-        'a2' => null,
-        'b2' => null,
-        'c2' => null,
-        'd2' => null,
-        'e2' => null,
-        'f2' => null,
-        'g2' => null,
-        'h2' => null,
-        'a3' => null,
-        'b3' => null,
-        'c3' => null,
-        'd3' => null,
-        'e3' => null,
-        'f3' => null,
-        'g3' => null,
-        'h3' => null,
-        'a4' => null,
-        'b4' => null,
-        'c4' => null,
-        'd4' => null,
-        'e4' => null,
-        'f4' => null,
-        'g4' => null,
-        'h4' => null,
-        'a5' => null,
-        'b5' => null,
-        'c5' => null,
-        'd5' => null,
-        'e5' => null,
-        'f5' => null,
-        'g5' => null,
-        'h5' => null,
-        'a6' => null,
-        'b6' => null,
-        'c6' => null,
-        'd6' => null,
-        'e6' => null,
-        'f6' => null,
-        'g6' => null,
-        'h6' => null,
-        'a7' => null,
-        'b7' => null,
-        'c7' => null,
-        'd7' => null,
-        'e7' => null,
-        'f7' => null,
-        'g7' => null,
-        'h7' => null,
-        'a8' => null,
-        'b8' => null,
-        'c8' => null,
-        'd8' => null,
-        'e8' => null,
-        'f8' => null,
-        'g8' => null,
-        'h8' => null,
-    ];
+    public const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+
+    private const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+
+    /**
+     * @var array<string, Piece|null>
+     */
+    private array $fields;
 
     public function __construct()
     {
-        $this->initializeBoard();
+        $this->fields = self::fieldsFromFen(self::START_FEN);
     }
 
-    private function initializePawns(): void
+    public static function fromFen(string $fen): self
     {
-        $charCode = 96;
-        for ($i = 0; $i < 8; $i++) {
-            $charCode++;
-            $this->fields[chr($charCode) . 7] = new Piece(
-                Side::BLACK,
-                PieceType::PAWN,
-                new Position(chr($charCode) . 7)
-            );
+        $board = new self();
+        $board->fields = self::fieldsFromFen($fen);
 
-            $this->fields[chr($charCode) . 2] = new Piece(
-                Side::WHITE,
-                PieceType::PAWN,
-                new Position(chr($charCode) . 2)
-            );
+        return $board;
+    }
+
+    public function toFen(): string
+    {
+        $ranks = [];
+        for ($rank = 8; $rank >= 1; $rank--) {
+            $ranks[] = $this->rankToFen($rank);
+        }
+
+        return implode('/', $ranks);
+    }
+
+    private function rankToFen(int $rank): string
+    {
+        $fen = '';
+        $emptySquares = 0;
+        foreach (self::FILES as $file) {
+            $piece = $this->fields[$file . $rank];
+            if ($piece === null) {
+                $emptySquares++;
+                continue;
+            }
+
+            $fen .= ($emptySquares > 0 ? $emptySquares : '') . self::pieceToFenChar($piece);
+            $emptySquares = 0;
+        }
+
+        return $fen . ($emptySquares > 0 ? $emptySquares : '');
+    }
+
+    /**
+     * @return array<string, Piece|null>
+     */
+    private static function fieldsFromFen(string $fen): array
+    {
+        $fields = self::emptyFields();
+        $rank = 8;
+        foreach (explode('/', $fen) as $rankFen) {
+            self::fillRankFromFen($fields, $rankFen, $rank);
+            $rank--;
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @param array<string, Piece|null> $fields
+     */
+    private static function fillRankFromFen(array &$fields, string $rankFen, int $rank): void
+    {
+        $fileIndex = 0;
+        foreach (str_split($rankFen) as $char) {
+            if (ctype_digit($char)) {
+                $fileIndex += (int) $char;
+                continue;
+            }
+
+            $position = new Position(chr(ord('a') + $fileIndex) . $rank);
+            $fields[$position->position] = self::pieceFromFenChar($char, $position);
+            $fileIndex++;
         }
     }
 
-    private function initializeBlackPieces(): void
+    private static function pieceFromFenChar(string $char, Position $position): Piece
     {
-        $this->fields['a8'] = new Piece(Side::BLACK, PieceType::ROOK, new Position('a8'));
-        $this->fields['h8'] = new Piece(Side::BLACK, PieceType::ROOK, new Position('h8'));
-        $this->fields['b8'] = new Piece(Side::BLACK, PieceType::BISHOP, new Position('b8'));
-        $this->fields['g8'] = new Piece(Side::BLACK, PieceType::BISHOP, new Position('g8'));
-        $this->fields['c8'] = new Piece(Side::BLACK, PieceType::KNIGHT, new Position('c8'));
-        $this->fields['f8'] = new Piece(Side::BLACK, PieceType::KNIGHT, new Position('f8'));
-        $this->fields['d8'] = new Piece(Side::BLACK, PieceType::QUEEN, new Position('d8'));
-        $this->fields['e8'] = new Piece(Side::BLACK, PieceType::KING, new Position('e8'));
+        $type = match (strtoupper($char)) {
+            'P' => PieceType::PAWN,
+            'N' => PieceType::KNIGHT,
+            'B' => PieceType::BISHOP,
+            'R' => PieceType::ROOK,
+            'Q' => PieceType::QUEEN,
+            'K' => PieceType::KING,
+            default => throw new \InvalidArgumentException('Invalid FEN piece character: ' . $char),
+        };
+        $side = ctype_upper($char) ? Side::WHITE : Side::BLACK;
+
+        return new Piece($side, $type, $position);
     }
 
-    private function initializeWhitePieces()
+    private static function pieceToFenChar(Piece $piece): string
     {
-        $this->fields['a1'] = new Piece(Side::WHITE, PieceType::ROOK, new Position('a1'));
-        $this->fields['h1'] = new Piece(Side::WHITE, PieceType::ROOK, new Position('h1'));
-        $this->fields['b1'] = new Piece(Side::WHITE, PieceType::BISHOP, new Position('b1'));
-        $this->fields['g1'] = new Piece(Side::WHITE, PieceType::BISHOP, new Position('g1'));
-        $this->fields['c1'] = new Piece(Side::WHITE, PieceType::KNIGHT, new Position('c1'));
-        $this->fields['f1'] = new Piece(Side::WHITE, PieceType::KNIGHT, new Position('f1'));
-        $this->fields['d1'] = new Piece(Side::WHITE, PieceType::QUEEN, new Position('d1'));
-        $this->fields['e1'] = new Piece(Side::WHITE, PieceType::KING, new Position('e1'));
+        $char = strtoupper($piece->type->value);
+
+        return $piece->side === Side::WHITE ? $char : strtolower($char);
     }
 
-    private function initializeBoard()
+    /**
+     * @return array<string, Piece|null>
+     */
+    private static function emptyFields(): array
     {
-        $this->initializePawns();
-        $this->initializeBlackPieces();
-        $this->initializeWhitePieces();
+        $fields = [];
+        for ($rank = 1; $rank <= 8; $rank++) {
+            foreach (self::FILES as $file) {
+                $fields[$file . $rank] = null;
+            }
+        }
+
+        return $fields;
     }
 
     public function removePiece(Position $position): void
@@ -140,11 +139,12 @@ class Board
 
     public function getPiece(Position $position): Piece
     {
-        if (!$this->fieldHasPiece($position)) {
+        $piece = $this->fields[$position->position];
+        if (!$piece instanceof Piece) {
             throw new \InvalidArgumentException('No piece at the given position.');
         }
 
-        return $this->fields[$position->position] ?? null;
+        return $piece;
     }
 
     public function fieldHasPiece(Position $position): bool
