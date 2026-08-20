@@ -24,6 +24,9 @@ class RepositoryFactory
     /** @var array<ProjectorInterface> */
     private array $projectors = [];
 
+    /**
+     * @param iterable<ProjectorInterface> $projectors
+     */
     public function __construct(
         private EventStoreInterface $eventStore,
         private ?MessageBusInterface $domainEventMessageBus = null,
@@ -62,6 +65,7 @@ class RepositoryFactory
 
         // Add async message bus middleware if configured
         if ($this->domainEventMessageBus !== null) {
+            /** @phpstan-ignore argument.type (the vendor constructor typehints the concrete MessageBus, but any MessageBusInterface works) */
             $asyncMiddleware = new SymfonyMessageBusConnectorMiddleware($this->domainEventMessageBus);
             $middlewares[] = $asyncMiddleware;
         }

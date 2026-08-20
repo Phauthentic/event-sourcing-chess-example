@@ -12,13 +12,15 @@ class SignUpResult extends OperationResult
 
     public static function validationFailed(
         ConstraintViolationList $errors
-    ): self
-    {
-        return new static(
+    ): self {
+        $result = new static(
             isSuccessful: false,
             errorCode: 1001,
             errorMessage: 'Validation failed',
         );
+        $result->constraintValidationList = $errors;
+
+        return $result;
     }
 
     public static function success(): self
@@ -28,7 +30,7 @@ class SignUpResult extends OperationResult
         );
     }
 
-    public function getValidationErrors(): ConstraintViolationList
+    public function getValidationErrors(): ?ConstraintViolationList
     {
         return $this->constraintValidationList;
     }

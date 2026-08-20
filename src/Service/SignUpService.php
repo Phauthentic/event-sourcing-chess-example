@@ -6,7 +6,6 @@ namespace App\Service;
 
 use App\Dto\SignUpTransfer;
 use App\Entity\User;
-use App\Repository\UserRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -16,7 +15,6 @@ class SignUpService
 {
     public function __construct(
         private UserPasswordHasherInterface $passwordHasher,
-        private UserRepository $userRepository,
         private EntityManagerInterface $entityManager,
         private ValidatorInterface $validator
     )

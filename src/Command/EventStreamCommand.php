@@ -82,7 +82,7 @@ class EventStreamCommand extends Command
             ];
         }
 
-        $io->writeln(json_encode($events, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $io->writeln((string) json_encode($events, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
         return Command::SUCCESS;
     }

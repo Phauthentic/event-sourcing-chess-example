@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\EventSourcing\EventStore\DoctrineEventStore;
+use App\Entity\DoctrineEventEntity;
 use App\Projection\ChessGameProjector;
 use Doctrine\ORM\EntityManagerInterface;
 use Phauthentic\EventStore\EventInterface;
@@ -100,7 +101,7 @@ class RebuildProjectionsCommand extends Command
     /**
      * Recreate domain event from stored entity.
      */
-    private function recreateEventFromEntity(object $eventEntity): object
+    private function recreateEventFromEntity(DoctrineEventEntity $eventEntity): object
     {
         $createdAt = \DateTimeImmutable::createFromFormat(
             'Y-m-d H:i:s',

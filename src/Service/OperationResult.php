@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+/**
+ * @phpstan-consistent-constructor
+ */
 class OperationResult
 {
     public function __construct(
