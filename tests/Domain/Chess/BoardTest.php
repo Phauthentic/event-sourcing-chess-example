@@ -82,10 +82,10 @@ class BoardTest extends TestCase
         $board = new Board();
 
         $whiteKingPos = $board->getKingPosition(Side::WHITE);
-        $this->assertEquals('e1', $whiteKingPos->toString());
+        $this->assertEquals('e1', $whiteKingPos->position);
 
         $blackKingPos = $board->getKingPosition(Side::BLACK);
-        $this->assertEquals('e8', $blackKingPos->toString());
+        $this->assertEquals('e8', $blackKingPos->position);
     }
 
     public function testIsSquareAttackedBy(): void
@@ -137,11 +137,11 @@ class BoardTest extends TestCase
         // Check that all positions are valid Position objects
         foreach ($positions as $position) {
             $this->assertInstanceOf(Position::class, $position);
-            $this->assertMatchesRegularExpression('/^[a-h][1-8]$/', $position->toString());
+            $this->assertMatchesRegularExpression('/^[a-h][1-8]$/', $position->position);
         }
 
         // Check specific positions
-        $positionStrings = array_map(fn($pos) => $pos->toString(), $positions);
+        $positionStrings = array_map(fn($pos) => $pos->position, $positions);
         $this->assertContains('a1', $positionStrings);
         $this->assertContains('h8', $positionStrings);
         $this->assertContains('e4', $positionStrings);

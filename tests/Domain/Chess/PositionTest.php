@@ -12,7 +12,7 @@ class PositionTest extends TestCase
     public function testPositionCreation(): void
     {
         $position = new Position('e4');
-        $this->assertEquals('e4', $position->toString());
+        $this->assertEquals('e4', $position->position);
         $this->assertEquals('e4', (string) $position);
     }
 
@@ -121,6 +121,6 @@ class PositionTest extends TestCase
     public function testFromString(): void
     {
         $position = Position::fromString('e4');
-        $this->assertEquals('e4', $position->toString());
+        $this->assertEquals('e4', $position->position);
     }
 }

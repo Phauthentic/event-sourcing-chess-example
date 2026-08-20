@@ -130,17 +130,12 @@ class Board
 
     public function removePiece(Position $position): void
     {
-        $this->fields[$position->toString()] = null;
-    }
-
-    public function removePieceAtPosition(Position $position): void
-    {
-        $this->removePiece($position);
+        $this->fields[$position->position] = null;
     }
 
     public function placePiece(Piece $piece, Position $position): void
     {
-        $this->fields[$position->toString()] = $piece;
+        $this->fields[$position->position] = $piece;
     }
 
     public function getPiece(Position $position): Piece
@@ -149,17 +144,17 @@ class Board
             throw new \InvalidArgumentException('No piece at the given position.');
         }
 
-        return $this->fields[$position->toString()] ?? null;
+        return $this->fields[$position->position] ?? null;
     }
 
     public function fieldHasPiece(Position $position): bool
     {
-        return $this->fields[$position->toString()] instanceof Piece;
+        return $this->fields[$position->position] instanceof Piece;
     }
 
     public function fieldHasPawn(Position $position): ?Piece
     {
-        $piece = $this->fields[$position->toString()];
+        $piece = $this->fields[$position->position];
         return ($piece instanceof Piece && $piece->type === PieceType::PAWN) ? $piece : null;
     }
 
@@ -180,8 +175,8 @@ class Board
 
     public function movePiece(Piece $piece, Position $to): void
     {
-        $this->fields[$to->toString()] = $piece;
-        $this->fields[$piece->position->toString()] = null;
+        $this->fields[$to->position] = $piece;
+        $this->fields[$piece->position->position] = null;
         $piece->setPosition($to);
     }
 
@@ -275,7 +270,7 @@ class Board
             $from = Position::fromString($position);
 
             // Skip if it's the same position
-            if ($from->toString() === $square->toString()) {
+            if ($from->position === $square->position) {
                 continue;
             }
 

@@ -43,7 +43,7 @@ class GameTest extends TestCase
         $game->move(new Position('e2'), new Position('e4'));
 
         // En passant target should be set to e3 (the square the pawn passed over)
-        $this->assertEquals('e3', $game->getEnPassantTarget()->toString());
+        $this->assertEquals('e3', $game->getEnPassantTarget()->position);
     }
 
     public function testEnPassantCapture(): void
@@ -85,7 +85,7 @@ class GameTest extends TestCase
         $game->move(new Position('d7'), new Position('d5'));
 
         // Now it's white's turn and en passant target should be set to d6
-        $this->assertEquals('d6', $game->getEnPassantTarget()->toString());
+        $this->assertEquals('d6', $game->getEnPassantTarget()->position);
 
         // For now, just check that en passant target is set correctly
         // TODO: Fix en passant capture move validation

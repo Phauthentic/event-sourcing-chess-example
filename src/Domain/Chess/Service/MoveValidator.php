@@ -120,7 +120,7 @@ class MoveValidator
             return false;
         }
 
-        return $to->toString() === $enPassantTarget->toString();
+        return $to->position === $enPassantTarget->position;
     }
 
     private function isCastlingMove(Piece $piece, Position $from, Position $to): bool

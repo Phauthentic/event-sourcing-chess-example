@@ -83,7 +83,7 @@ class EnPassantTest extends TestCase
         $game->move(new Position('e2'), new Position('e4'));
 
         // En passant target should be set to e3
-        $this->assertEquals('e3', $game->getEnPassantTarget()?->toString());
+        $this->assertEquals('e3', $game->getEnPassantTarget()?->position);
     }
 
     public function testEnPassantTargetClearedAfterNextMove(): void

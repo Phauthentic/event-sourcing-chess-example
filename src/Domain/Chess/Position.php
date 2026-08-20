@@ -32,11 +32,6 @@ class Position
         return new self($position);
     }
 
-    public function toString()
-    {
-        return $this->position;
-    }
-
     public function file(): string
     {
         return $this->position[0];

@@ -9,6 +9,8 @@ use App\Domain\Chess\CastlingRights;
 use App\Domain\Chess\Event\CastlingPerformed;
 use App\Domain\Chess\Event\CheckAnnounced;
 use App\Domain\Chess\Event\Checkmate;
+use App\Domain\Chess\Event\DrawAccepted;
+use App\Domain\Chess\Event\DrawOffered;
 use App\Domain\Chess\Event\GameFinished;
 use App\Domain\Chess\Event\GameStarted;
 use App\Domain\Chess\Event\PieceCaptured;
@@ -113,17 +115,19 @@ class Game extends AbstractEventSourcedAggregate
 
     public function offerDraw(): void
     {
-        $this->endTurn();
+        $this->recordThat(new DrawOffered(gameId: (string) $this->getGameId()));
     }
 
     public function acceptDraw(): void
     {
-        $this->endTurn();
-    }
-
-    public function declineDraw(): void
-    {
-        $this->endTurn();
+        $this->recordThat(new DrawAccepted(gameId: (string) $this->getGameId()));
+        $this->recordThat(new GameFinished(
+            gameId: (string) $this->getGameId(),
+            status: GameStatus::DRAW_AGREED->value,
+            winner: null,
+            reason: 'draw agreed'
+        ));
+        $this->status = GameStatus::DRAW_AGREED;
     }
 
     public function move(Position $from, Position $to, ?PieceType $promotion = null): void
@@ -174,8 +178,8 @@ class Game extends AbstractEventSourcedAggregate
             $piece->promote($promotion);
             $this->recordThat(new PiecePromoted(
                 gameId: (string) $this->getGameId(),
-                from: $from->toString(),
-                to: $to->toString(),
+                from: $from->position,
+                to: $to->position,
                 promotedTo: $promotion->value
             ));
         }
@@ -184,8 +188,8 @@ class Game extends AbstractEventSourcedAggregate
             $this->recordThat(new PieceMoved(
                 gameId: (string) $this->getGameId(),
                 pieceType: $piece->type->value,
-                from: $from->toString(),
-                to: $to->toString()
+                from: $from->position,
+                to: $to->position
             ));
         }
     }
@@ -203,8 +207,8 @@ class Game extends AbstractEventSourcedAggregate
             gameId: (string) $this->getGameId(),
             pieceType: $piece->type->value,
             captured: $capturedPiece->type->value,
-            from: $from->toString(),
-            to: $to->toString(),
+            from: $from->position,
+            to: $to->position,
             isEnPassant: false
         ));
     }
@@ -249,10 +253,10 @@ class Game extends AbstractEventSourcedAggregate
             gameId: (string) $this->getGameId(),
             side: $side->value,
             type: $type,
-            kingFrom: $kingFrom->toString(),
-            kingTo: $kingTo->toString(),
-            rookFrom: $rookFrom->toString(),
-            rookTo: $rookTo->toString()
+            kingFrom: $kingFrom->position,
+            kingTo: $kingTo->position,
+            rookFrom: $rookFrom->position,
+            rookTo: $rookTo->position
         ));
 
         // Update castling rights (all rights are now lost)
@@ -273,8 +277,8 @@ class Game extends AbstractEventSourcedAggregate
         }
 
         // Rook moved - revoke castling rights for that side
-        $isKingsideRook = ($piece->side === Side::WHITE && $from->toString() === 'h1') ||
-                          ($piece->side === Side::BLACK && $from->toString() === 'h8');
+        $isKingsideRook = ($piece->side === Side::WHITE && $from->position === 'h1') ||
+                          ($piece->side === Side::BLACK && $from->position === 'h8');
         $type = $isKingsideRook ? 'kingside' : 'queenside';
         $this->castlingRights = $this->castlingRights->revokeForSide($piece->side, $type);
     }
@@ -307,7 +311,7 @@ class Game extends AbstractEventSourcedAggregate
             return false;
         }
 
-        return $to->toString() === $enPassantTarget->toString();
+        return $to->position === $enPassantTarget->position;
     }
 
     private function performEnPassantCapture(Position $from, Position $to): void
@@ -335,8 +339,8 @@ class Game extends AbstractEventSourcedAggregate
             gameId: (string) $this->getGameId(),
             pieceType: $piece->type->value,
             captured: $capturedPiece->type->value,
-            from: $from->toString(),
-            to: $to->toString(),
+            from: $from->position,
+            to: $to->position,
             isEnPassant: true
         ));
     }
@@ -459,7 +463,7 @@ class Game extends AbstractEventSourcedAggregate
             for ($rank = 1; $rank <= 8; $rank++) {
                 $toPosition = new Position($file . $rank);
 
-                if ($fromPosition->toString() === $toPosition->toString()) {
+                if ($fromPosition->position === $toPosition->position) {
                     continue;
                 }
 
@@ -616,6 +620,14 @@ class Game extends AbstractEventSourcedAggregate
 
         $this->castlingRights = $this->castlingRights->revokeForSide(Side::from($event->side), 'both');
         $this->endTurn();
+    }
+
+    protected function whenDrawOffered(DrawOffered $event): void
+    {
+    }
+
+    protected function whenDrawAccepted(DrawAccepted $event): void
+    {
     }
 
     protected function whenGameFinished(GameFinished $event): void

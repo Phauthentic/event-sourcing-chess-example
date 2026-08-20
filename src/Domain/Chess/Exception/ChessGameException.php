@@ -16,11 +16,6 @@ final class ChessGameException extends ChessDomainException
         return new self('Players must not have the same side!');
     }
 
-    public static function becauseNoPieceOnSelectedPosition(string $position): self
-    {
-        return new self(sprintf('There is no piece on the selected position: %s', $position));
-    }
-
     public static function becauseGameIsNotInProgress(): self
     {
         return new self('Game is not in progress');
