@@ -34,7 +34,7 @@ class ChessBoardRenderer
             foreach ($files as $file) {
                 $pos = $file . $rank;
                 $piece = $squares[$pos] ?? null;
-                $line .= $piece ? $piece['symbol'] . ' ' : '· ';
+                $line .= $piece ? ($piece['symbol'] ?? '?') . ' ' : '· ';
             }
             $lines[] = $line;
         }
