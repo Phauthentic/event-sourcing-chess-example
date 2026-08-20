@@ -192,6 +192,7 @@ class Game extends AbstractEventSourcedAggregate
             to: $to->position,
             isEnPassant: true
         ));
+
         $this->recordAndApply(new PieceMoved(
             gameId: (string) $this->gameId(),
             pieceType: $piece->type->value,
@@ -248,6 +249,7 @@ class Game extends AbstractEventSourcedAggregate
             winnerSide: $winnerSide->value,
             loserSide: $winnerSide->opponent()->value
         ));
+
         $this->recordAndApply(new GameFinished(
             gameId: (string) $this->gameId(),
             status: GameStatus::CHECKMATE->value,
@@ -286,6 +288,7 @@ class Game extends AbstractEventSourcedAggregate
 
         $isKingsideRook = ($piece->side === Side::WHITE && $from->position === 'h1') ||
                           ($piece->side === Side::BLACK && $from->position === 'h8');
+
         $castlingSide = $isKingsideRook ? CastlingSide::KINGSIDE : CastlingSide::QUEENSIDE;
         $this->castlingRights = $this->castlingRights()->revokeForSide($piece->side, $castlingSide);
     }
