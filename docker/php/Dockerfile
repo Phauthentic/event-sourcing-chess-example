@@ -1,9 +1,10 @@
-FROM php:8.3-fpm-alpine
+FROM php:8.4-fpm-alpine
 
 # Install system dependencies
 RUN apk add --no-cache \
     git \
     curl \
+    linux-headers \
     libpng-dev \
     libxml2-dev \
     libzip-dev \
@@ -15,7 +16,11 @@ RUN apk add --no-cache \
     zip \
     bcmath \
     opcache \
-    sockets
+    sockets \
+    && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
+    && pecl install amqp \
+    && docker-php-ext-enable amqp \
+    && apk del .build-deps
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
