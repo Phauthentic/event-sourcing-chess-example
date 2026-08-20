@@ -91,7 +91,7 @@ class ChessGameService
                     $squares[$pos] = [
                         'type' => $piece->type->value,
                         'side' => $piece->side->value,
-                        'symbol' => $piece->toSymbol(),
+                        'symbol' => ChessBoardRenderer::symbol($piece->side->value, $piece->type->value),
                     ];
                 }
             }

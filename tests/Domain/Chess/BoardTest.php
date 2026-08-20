@@ -88,22 +88,6 @@ class BoardTest extends TestCase
         $this->assertEquals('e8', $blackKingPos->position);
     }
 
-    public function testIsSquareAttackedBy(): void
-    {
-        $board = new Board();
-
-        // Test knight attacks (knights can jump)
-        $this->assertTrue($board->isSquareAttackedBy(new Position('a3'), Side::WHITE)); // attacked by b1 knight
-        $this->assertTrue($board->isSquareAttackedBy(new Position('c3'), Side::WHITE)); // attacked by b1 knight
-
-        // Test pawn attacks
-        $this->assertTrue($board->isSquareAttackedBy(new Position('b3'), Side::WHITE)); // attacked by a2 pawn
-        $this->assertTrue($board->isSquareAttackedBy(new Position('f3'), Side::WHITE)); // attacked by e2 pawn
-
-        // Test that own pieces don't attack squares occupied by own pieces
-        $this->assertFalse($board->isSquareAttackedBy(new Position('h2'), Side::WHITE)); // occupied by own pawn, not attacked by own pieces
-    }
-
     public function testClone(): void
     {
         $board = new Board();

@@ -134,10 +134,10 @@ class Game extends AbstractEventSourcedAggregate
 
         $piece = $this->getBoard()->getPiece($from);
 
-        match (true) {
-            $this->isCastlingMove($piece, $from, $to) => $this->recordCastling($piece, $from, $to),
-            $this->isEnPassantCapture($piece, $from, $to) => $this->recordEnPassantCapture($piece, $from, $to),
-            default => $this->recordStandardMove($piece, $from, $to, $promotion),
+        match ($this->moveValidator()->moveKind($this->getBoard(), $from, $to, $this->enPassantTarget)) {
+            MoveKind::CASTLING => $this->recordCastling($piece, $from, $to),
+            MoveKind::EN_PASSANT => $this->recordEnPassantCapture($piece, $from, $to),
+            MoveKind::STANDARD => $this->recordStandardMove($piece, $from, $to, $promotion),
         };
 
         $this->recordGameEndConditions($piece->side);
@@ -214,7 +214,7 @@ class Game extends AbstractEventSourcedAggregate
     {
         $board = $this->getBoard();
         $opponentSide = $moverSide === Side::WHITE ? Side::BLACK : Side::WHITE;
-        $isInCheck = $board->isSquareAttackedBy($board->getKingPosition($opponentSide), $moverSide);
+        $isInCheck = $this->moveValidator()->isSquareAttackedBy($board, $board->getKingPosition($opponentSide), $moverSide);
         $opponentHasMoves = $this->hasLegalMoves($opponentSide);
 
         if ($isInCheck && !$opponentHasMoves) {
@@ -265,28 +265,6 @@ class Game extends AbstractEventSourcedAggregate
     private function endTurn(): void
     {
         $this->activePlayer = $this->activePlayer === $this->playerOne ? $this->playerTwo : $this->playerOne;
-    }
-
-    private function isCastlingMove(Piece $piece, Position $from, Position $to): bool
-    {
-        if ($piece->type !== PieceType::KING) {
-            return false;
-        }
-
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
-
-        return $rankDelta === 0 && abs($fileDelta) === 2;
-    }
-
-    private function isEnPassantCapture(Piece $piece, Position $from, Position $to): bool
-    {
-        if ($piece->type !== PieceType::PAWN || $this->enPassantTarget === null) {
-            return false;
-        }
-
-        [$fileDelta] = $from->distanceTo($to);
-
-        return abs($fileDelta) === 1 && $to->position === $this->enPassantTarget->position;
     }
 
     private function updateCastlingRights(Piece $piece, Position $from): void

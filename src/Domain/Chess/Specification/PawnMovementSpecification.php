@@ -6,7 +6,6 @@ namespace App\Domain\Chess\Specification;
 
 use App\Domain\Chess\Board;
 use App\Domain\Chess\Piece;
-use App\Domain\Chess\PieceType;
 use App\Domain\Chess\Position;
 use App\Domain\Chess\Side;
 
@@ -20,10 +19,6 @@ class PawnMovementSpecification implements PieceMovementSpecification
 {
     public function isSatisfiedBy(Piece $piece, Position $from, Position $to, Board $board): bool
     {
-        if ($piece->type !== PieceType::PAWN) {
-            return false;
-        }
-
         [$fileDelta, $rankDelta] = $from->distanceTo($to);
 
         return match ($piece->side) {

@@ -16,6 +16,7 @@ use App\Domain\Chess\Event\PieceMoved;
 use App\Domain\Chess\Event\PiecePromoted;
 use App\Domain\Chess\Event\Stalemate;
 use App\Entity\ChessGameReadModel;
+use App\Service\ChessBoardRenderer;
 use Doctrine\ORM\EntityManagerInterface;
 use Phauthentic\EventSourcing\Projection\ResettableProjectorInterface;
 
@@ -33,11 +34,6 @@ class ChessGameProjector implements ResettableProjectorInterface
         'R' => 'rook',
         'Q' => 'queen',
         'K' => 'king',
-    ];
-
-    private const PIECE_SYMBOLS = [
-        'white' => ['P' => '♙', 'N' => '♘', 'B' => '♗', 'R' => '♖', 'Q' => '♕', 'K' => '♔'],
-        'black' => ['P' => '♟', 'N' => '♞', 'B' => '♝', 'R' => '♜', 'Q' => '♛', 'K' => '♚'],
     ];
 
     public function __construct(
@@ -202,7 +198,7 @@ class ChessGameProjector implements ResettableProjectorInterface
             $board[$event->to] = [
                 'type' => self::PIECE_NAMES[strtoupper($event->promotedTo)] ?? strtolower($event->promotedTo),
                 'side' => $pawn['side'],
-                'symbol' => self::PIECE_SYMBOLS[$pawn['side']][strtoupper($event->promotedTo)] ?? '?',
+                'symbol' => ChessBoardRenderer::symbol($pawn['side'], $event->promotedTo),
             ];
             $readModel->setBoard($board);
         }

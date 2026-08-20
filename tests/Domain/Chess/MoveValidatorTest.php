@@ -151,6 +151,22 @@ class MoveValidatorTest extends TestCase
         $this->assertFalse($this->validator->isMoveLegal($game, new Position('e7'), new Position('e6')));
     }
 
+    public function testIsSquareAttackedBy(): void
+    {
+        $board = new Board();
+
+        // Knight attacks (knights can jump)
+        $this->assertTrue($this->validator->isSquareAttackedBy($board, new Position('a3'), Side::WHITE)); // b1 knight
+        $this->assertTrue($this->validator->isSquareAttackedBy($board, new Position('c3'), Side::WHITE)); // b1 knight
+
+        // Pawn attacks
+        $this->assertTrue($this->validator->isSquareAttackedBy($board, new Position('b3'), Side::WHITE)); // a2 pawn
+        $this->assertTrue($this->validator->isSquareAttackedBy($board, new Position('f3'), Side::WHITE)); // e2 pawn
+
+        // A square occupied by an own piece is not considered attacked by that side
+        $this->assertFalse($this->validator->isSquareAttackedBy($board, new Position('h2'), Side::WHITE));
+    }
+
     private function createGame(string $fen): Game
     {
         return Game::create(

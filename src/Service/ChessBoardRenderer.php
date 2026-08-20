@@ -7,6 +7,19 @@ namespace App\Service;
 class ChessBoardRenderer
 {
     /**
+     * Unicode chess symbols keyed by side and FEN-style piece letter.
+     */
+    public const PIECE_SYMBOLS = [
+        'white' => ['P' => '♙', 'N' => '♘', 'B' => '♗', 'R' => '♖', 'Q' => '♕', 'K' => '♔'],
+        'black' => ['P' => '♟', 'N' => '♞', 'B' => '♝', 'R' => '♜', 'Q' => '♛', 'K' => '♚'],
+    ];
+
+    public static function symbol(string $side, string $pieceLetter): string
+    {
+        return self::PIECE_SYMBOLS[$side][strtoupper($pieceLetter)] ?? '?';
+    }
+
+    /**
      * Renders a chess board from a squares array (position => piece data).
      *
      * @param array<string, array{type?: string, side?: string, symbol?: string}|null> $squares

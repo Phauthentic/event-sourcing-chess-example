@@ -180,33 +180,6 @@ class Board
         $piece->setPosition($to);
     }
 
-    public function renderBoard()
-    {
-        $board = '';
-
-        for ($row = 8; $row >= 1; $row--) {
-            $board .= " $row ";
-            $charCode = 96;
-            for ($col = 1; $col <= 8; $col++) {
-                $position = new Position(chr($charCode + 1) . $row);
-
-                if ($this->fieldHasPiece($position)) {
-                    $board .= $this->getPiece($position)->toSymbol();
-                    continue;
-                }
-
-                $square = ($row + $col) % 2 === 0 ? Square::WHITE : Square::BLACK;
-                $board .= $square->value;
-            }
-
-            $board .= PHP_EOL;
-        }
-
-        $board .= '    a b c d e f g h';
-
-        return $board;
-    }
-
     public function isPathClear(Position $from, Position $to): bool
     {
         if (!$from->isStraight($to) && !$from->isDiagonal($to)) {
@@ -249,71 +222,6 @@ class Board
         }
 
         throw new \RuntimeException("King not found for side {$side->value}");
-    }
-
-    public function isSquareAttackedBy(Position $square, Side $bySide): bool
-    {
-        // If the square is occupied by a piece of the same side, it's not "attacked"
-        if ($this->fieldHasPiece($square)) {
-            $occupyingPiece = $this->getPiece($square);
-            if ($occupyingPiece->side === $bySide) {
-                return false;
-            }
-        }
-
-        // Check if any piece of the given side can attack this square
-        foreach ($this->fields as $position => $piece) {
-            if (!$piece instanceof Piece || $piece->side !== $bySide) {
-                continue;
-            }
-
-            $from = Position::fromString($position);
-
-            // Skip if it's the same position
-            if ($from->position === $square->position) {
-                continue;
-            }
-
-            // Check if this piece can attack the square
-            if ($this->canPieceAttackSquare($piece, $from, $square)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function canPieceAttackSquare(Piece $piece, Position $from, Position $to): bool
-    {
-        // Basic piece movement rules (simplified for attack checking)
-        switch ($piece->type) {
-            case PieceType::PAWN:
-                return $this->canPawnAttack($piece->side, $from, $to);
-            case PieceType::ROOK:
-                return $from->isStraight($to) && $this->isPathClear($from, $to);
-            case PieceType::BISHOP:
-                return $from->isDiagonal($to) && $this->isPathClear($from, $to);
-            case PieceType::QUEEN:
-                return ($from->isStraight($to) || $from->isDiagonal($to)) && $this->isPathClear($from, $to);
-            case PieceType::KNIGHT:
-                return $from->isKnightMove($to);
-            case PieceType::KING:
-                [$fileDelta, $rankDelta] = $from->distanceTo($to);
-                return abs($fileDelta) <= 1 && abs($rankDelta) <= 1;
-        }
-
-        return false;
-    }
-
-    private function canPawnAttack(Side $side, Position $from, Position $to): bool
-    {
-        [$fileDelta, $rankDelta] = $from->distanceTo($to);
-
-        if ($side === Side::WHITE) {
-            return $rankDelta === 1 && abs($fileDelta) === 1;
-        }
-
-        return $rankDelta === -1 && abs($fileDelta) === 1;
     }
 
     public function clone(): Board
