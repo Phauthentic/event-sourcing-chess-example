@@ -8,8 +8,4 @@ use Exception;
 
 class ChessDomainException extends Exception
 {
-    public static function playerMustNotBeTheSameSide(): self
-    {
-        return new self('Players must not have the same side!');
-    }
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Chess;
 
+use App\Domain\Chess\Exception\ChessGameException;
+
 /**
  *
  */
@@ -26,7 +28,7 @@ class Move
     private static function assertValidMove(string $move): void
     {
         if (!preg_match('/^([a-h][1-8])\s*-\s*([a-h][1-8])$/', $move, $matches)) {
-            throw new \InvalidArgumentException('Invalid move');
+            throw new ChessGameException('Invalid move');
         }
     }
 }

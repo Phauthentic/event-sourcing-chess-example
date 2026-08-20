@@ -316,9 +316,9 @@ class Board
 
         if ($side === Side::WHITE) {
             return $rankDelta === 1 && abs($fileDelta) === 1;
-        } else {
-            return $rankDelta === -1 && abs($fileDelta) === 1;
         }
+
+        return $rankDelta === -1 && abs($fileDelta) === 1;
     }
 
     public function clone(): Board

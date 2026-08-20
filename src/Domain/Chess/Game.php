@@ -15,7 +15,7 @@ use App\Domain\Chess\Event\PieceCaptured;
 use App\Domain\Chess\Event\PieceMoved;
 use App\Domain\Chess\Event\PiecePromoted;
 use App\Domain\Chess\Event\Stalemate;
-use App\Domain\Chess\Exception\ChessDomainException;
+use App\Domain\Chess\Exception\ChessGameException;
 use App\Domain\Chess\GameId;
 use App\Domain\Chess\GameStatus;
 use App\Domain\Chess\PieceType;
@@ -89,14 +89,14 @@ class Game extends AbstractEventSourcedAggregate
     private function assertPlayersAreNotTheSame(Player $playerOne, Player $playerTwo): void
     {
         if ($playerOne->name === $playerTwo->name) {
-            throw new ChessDomainException('Players must not be the same!');
+            throw ChessGameException::becausePlayersMustNotHaveTheSameName();
         }
     }
 
     private function assertPlayersAreNotOnTheSameSide(Player $playerOne, Player $playerTwo): void
     {
         if ($playerOne->side === $playerTwo->side) {
-            throw ChessDomainException::playerMustNotBeTheSameSide();
+            throw ChessGameException::becausePlayersMustNotHaveTheSameSide();
         }
     }
 
@@ -126,27 +126,17 @@ class Game extends AbstractEventSourcedAggregate
         $this->endTurn();
     }
 
-    private function assertBoardHasPieceOnPosition(Position $position): void
-    {
-        if (!$this->board->fieldHasPiece($position)) {
-            throw new ChessDomainException(sprintf(
-                'There is no piece on the selected position: %s',
-                $position->toString()
-            ));
-        }
-    }
-
     public function move(Position $from, Position $to, ?PieceType $promotion = null): void
     {
         // Check if game is still in progress
         if ($this->status !== GameStatus::IN_PROGRESS) {
-            throw new ChessDomainException('Game is not in progress');
+            throw ChessGameException::becauseGameIsNotInProgress();
         }
 
         // Validate the move using domain service
         $moveValidator = new MoveValidator();
         if (!$moveValidator->isMoveLegal($this, $from, $to, $promotion)) {
-            throw new ChessDomainException('Invalid move');
+            throw ChessGameException::becauseInvalidMove();
         }
 
         // Execute the move
@@ -154,15 +144,12 @@ class Game extends AbstractEventSourcedAggregate
         $isCapture = $this->board->fieldHasPiece($to);
 
         // Check if this is a castling move
-        if ($this->isCastlingMove($piece, $from, $to)) {
-            $this->performCastling($from, $to);
-        } elseif ($this->isEnPassantCapture($piece, $from, $to)) {
-            $this->performEnPassantCapture($from, $to);
-        } elseif ($isCapture) {
-            $this->capturePiece($from, $to);
-        } else {
-            $this->movePiece($from, $to, $promotion);
-        }
+        match (true) {
+            $this->isCastlingMove($piece, $from, $to) => $this->performCastling($from, $to),
+            $this->isEnPassantCapture($piece, $from, $to) => $this->performEnPassantCapture($from, $to),
+            $isCapture => $this->capturePiece($from, $to),
+            default => $this->movePiece($from, $to, $promotion),
+        };
 
         // Update castling rights if king or rook moved
         $this->updateCastlingRights($piece, $from);
@@ -191,7 +178,9 @@ class Game extends AbstractEventSourcedAggregate
                 to: $to->toString(),
                 promotedTo: $promotion->value
             ));
-        } else {
+        }
+
+        if ($promotion === null || $piece->type !== PieceType::PAWN) {
             $this->recordThat(new PieceMoved(
                 gameId: (string) $this->getGameId(),
                 pieceType: $piece->type->value,
@@ -275,13 +264,19 @@ class Game extends AbstractEventSourcedAggregate
         if ($piece->type === PieceType::KING) {
             // King moved - revoke all castling rights for this side
             $this->castlingRights = $this->castlingRights->revokeForSide($piece->side, 'both');
-        } elseif ($piece->type === PieceType::ROOK) {
-            // Rook moved - revoke castling rights for that side
-            $isKingsideRook = ($piece->side === Side::WHITE && $from->toString() === 'h1') ||
-                              ($piece->side === Side::BLACK && $from->toString() === 'h8');
-            $type = $isKingsideRook ? 'kingside' : 'queenside';
-            $this->castlingRights = $this->castlingRights->revokeForSide($piece->side, $type);
+
+            return;
         }
+
+        if ($piece->type !== PieceType::ROOK) {
+            return;
+        }
+
+        // Rook moved - revoke castling rights for that side
+        $isKingsideRook = ($piece->side === Side::WHITE && $from->toString() === 'h1') ||
+                          ($piece->side === Side::BLACK && $from->toString() === 'h8');
+        $type = $isKingsideRook ? 'kingside' : 'queenside';
+        $this->castlingRights = $this->castlingRights->revokeForSide($piece->side, $type);
     }
 
     private function isEnPassantCapture(Piece $piece, Position $from, Position $to): bool
@@ -325,7 +320,7 @@ class Game extends AbstractEventSourcedAggregate
         $capturedPawnPosition = new Position($to->file() . $capturedPawnRank);
 
         if (!$this->board->fieldHasPiece($capturedPawnPosition)) {
-            throw new ChessDomainException('Invalid en passant capture: no pawn to capture');
+            throw ChessGameException::becauseInvalidEnPassantCapture();
         }
 
         $capturedPiece = $this->board->getPiece($capturedPawnPosition);
@@ -348,77 +343,78 @@ class Game extends AbstractEventSourcedAggregate
 
     private function updateEnPassantTarget(Piece $piece, Position $from, Position $to): void
     {
-        if ($piece->type === PieceType::PAWN) {
-            [$fileDelta, $rankDelta] = $from->distanceTo($to);
-            // Pawn moved 2 squares - set en passant target
-            if (abs($rankDelta) === 2) {
-                $targetRank = $piece->side === Side::WHITE ? $from->rank() + 1 : $from->rank() - 1;
-                $this->enPassantTarget = new Position($from->file() . $targetRank);
-            } else {
-                // Any other pawn move clears the en passant target
-                $this->enPassantTarget = null;
-            }
-        } else {
-            // Non-pawn moves clear the en passant target
+        if ($piece->type !== PieceType::PAWN) {
             $this->enPassantTarget = null;
+
+            return;
         }
+
+        [$fileDelta, $rankDelta] = $from->distanceTo($to);
+
+        if (abs($rankDelta) !== 2) {
+            $this->enPassantTarget = null;
+
+            return;
+        }
+
+        // Pawn moved 2 squares - set en passant target
+        $targetRank = $piece->side === Side::WHITE ? $from->rank() + 1 : $from->rank() - 1;
+        $this->enPassantTarget = new Position($from->file() . $targetRank);
     }
 
     private function checkGameEndConditions(): void
     {
         $opponentSide = $this->activePlayer->side === Side::WHITE ? Side::BLACK : Side::WHITE;
 
-        try {
-            $opponentKingPosition = $this->board->getKingPosition($opponentSide);
+        $opponentKingPosition = $this->board->getKingPosition($opponentSide);
 
-            // Check if opponent is in check
-            $isInCheck = $this->board->isSquareAttackedBy($opponentKingPosition, $this->activePlayer->side);
+        // Check if opponent is in check
+        $isInCheck = $this->board->isSquareAttackedBy($opponentKingPosition, $this->activePlayer->side);
 
-            if ($isInCheck) {
-                // Check if opponent has any legal moves
-                if (!$this->hasLegalMoves($opponentSide)) {
-                    // Checkmate
-                    $this->status = GameStatus::CHECKMATE;
-                    $winnerSide = $this->activePlayer->side->value;
-                    $loserSide = $opponentSide->value;
-                    $this->recordThat(new Checkmate(
-                        gameId: (string) $this->getGameId(),
-                        winnerSide: $winnerSide,
-                        loserSide: $loserSide
-                    ));
-                    $this->recordThat(new GameFinished(
-                        gameId: (string) $this->getGameId(),
-                        status: GameStatus::CHECKMATE->value,
-                        winner: $winnerSide,
-                        reason: 'checkmate'
-                    ));
-                    return;
-                }
-                // Just in check - emit CheckAnnounced
-                $this->recordThat(new CheckAnnounced(gameId: (string) $this->getGameId()));
-            } else {
-                // Not in check - check for stalemate
-                if (!$this->hasLegalMoves($opponentSide)) {
-                    $this->status = GameStatus::STALEMATE;
-                    $this->recordThat(new Stalemate(gameId: (string) $this->getGameId()));
-                    $this->recordThat(new GameFinished(
-                        gameId: (string) $this->getGameId(),
-                        status: GameStatus::STALEMATE->value,
-                        winner: null,
-                        reason: 'stalemate'
-                    ));
-                    return;
-                }
+        if ($isInCheck) {
+            if (!$this->hasLegalMoves($opponentSide)) {
+                // Checkmate
+                $this->status = GameStatus::CHECKMATE;
+                $winnerSide = $this->activePlayer->side->value;
+                $loserSide = $opponentSide->value;
+
+                $this->recordThat(new Checkmate(
+                    gameId: (string) $this->getGameId(),
+                    winnerSide: $winnerSide,
+                    loserSide: $loserSide
+                ));
+
+                $this->recordThat(new GameFinished(
+                    gameId: (string) $this->getGameId(),
+                    status: GameStatus::CHECKMATE->value,
+                    winner: $winnerSide,
+                    reason: 'checkmate'
+                ));
+
+                return;
             }
-        } catch (\RuntimeException $e) {
-            // King not found - should not happen in a valid game
+
+            $this->recordThat(new CheckAnnounced(gameId: (string) $this->getGameId()));
+
+            return;
+        }
+
+        if (!$this->hasLegalMoves($opponentSide)) {
+            $this->status = GameStatus::STALEMATE;
+            $this->recordThat(new Stalemate(gameId: (string) $this->getGameId()));
+            $this->recordThat(new GameFinished(
+                gameId: (string) $this->getGameId(),
+                status: GameStatus::STALEMATE->value,
+                winner: null,
+                reason: 'stalemate'
+            ));
+
+            return;
         }
     }
 
     private function hasLegalMoves(Side $side): bool
     {
-        $moveValidator = new MoveValidator();
-
         // Create a temporary game with the correct active player
         $tempGame = new self();
         $tempGame->gameId = $this->gameId;
@@ -430,7 +426,13 @@ class Game extends AbstractEventSourcedAggregate
         $tempGame->enPassantTarget = $this->enPassantTarget;
         $tempGame->status = GameStatus::IN_PROGRESS;
 
-        // Check all pieces of the given side for legal moves
+        return $this->checkAllPiecesForTheGivenSideForLegalMoves($tempGame, $side);
+    }
+
+    private function checkAllPiecesForTheGivenSideForLegalMoves(
+        self $tempGame,
+        Side $side
+    ): bool {
         foreach ($this->board->getAllPositions() as $fromPosition) {
             if (!$tempGame->board->fieldHasPiece($fromPosition)) {
                 continue;
@@ -441,19 +443,28 @@ class Game extends AbstractEventSourcedAggregate
                 continue;
             }
 
-            // Check all possible destination squares
-            for ($file = 'a'; $file <= 'h'; $file++) {
-                for ($rank = 1; $rank <= 8; $rank++) {
-                    $toPosition = new Position($file . $rank);
+            if ($this->hasLegalMoveFromSquare($tempGame, $fromPosition)) {
+                return true;
+            }
+        }
 
-                    // Skip same position
-                    if ($fromPosition->toString() === $toPosition->toString()) {
-                        continue;
-                    }
+        return false;
+    }
 
-                    if ($moveValidator->isMoveLegal($tempGame, $fromPosition, $toPosition)) {
-                        return true;
-                    }
+    private function hasLegalMoveFromSquare(self $game, Position $fromPosition): bool
+    {
+        $moveValidator = new MoveValidator();
+
+        for ($file = 'a'; $file <= 'h'; $file++) {
+            for ($rank = 1; $rank <= 8; $rank++) {
+                $toPosition = new Position($file . $rank);
+
+                if ($fromPosition->toString() === $toPosition->toString()) {
+                    continue;
+                }
+
+                if ($moveValidator->isMoveLegal($game, $fromPosition, $toPosition)) {
+                    return true;
                 }
             }
         }
@@ -464,7 +475,7 @@ class Game extends AbstractEventSourcedAggregate
     private function assertActivePlayerOwnsThePiece(Piece $piece): void
     {
         if ($this->activePlayer->side !== $piece->side) {
-            throw new ChessDomainException('It is not your turn!');
+            throw ChessGameException::becauseNotYourTurn();
         }
     }
 

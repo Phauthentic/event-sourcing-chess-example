@@ -26,11 +26,10 @@ class PawnMovementSpecification implements PieceMovementSpecification
 
         [$fileDelta, $rankDelta] = $from->distanceTo($to);
 
-        if ($piece->side === Side::WHITE) {
-            return $this->isValidWhitePawnMove($fileDelta, $rankDelta, $from, $to, $board);
-        } else {
-            return $this->isValidBlackPawnMove($fileDelta, $rankDelta, $from, $to, $board);
-        }
+        return match ($piece->side) {
+            Side::WHITE => $this->isValidWhitePawnMove($fileDelta, $rankDelta, $from, $to, $board),
+            Side::BLACK => $this->isValidBlackPawnMove($fileDelta, $rankDelta, $from, $to, $board),
+        };
     }
 
     private function isValidWhitePawnMove(int $fileDelta, int $rankDelta, Position $from, Position $to, Board $board): bool
@@ -38,25 +37,18 @@ class PawnMovementSpecification implements PieceMovementSpecification
         // White pawns move "up" (increasing rank)
 
         // Forward movement (no capture)
-        if ($fileDelta === 0 && !$board->fieldHasPiece($to)) {
-            // 1 square forward
-            if ($rankDelta === 1) {
-                return true;
-            }
-            // 2 squares forward from starting position (rank 2)
-            if ($rankDelta === 2 && $from->rank() === 2) {
-                // Check that the intermediate square is also empty
-                $intermediate = new Position($from->file() . '3');
-                return !$board->fieldHasPiece($intermediate);
-            }
-        }
-
-        // Diagonal capture
-        if (abs($fileDelta) === 1 && $rankDelta === 1 && $board->fieldHasPiece($to)) {
+        if ($fileDelta === 0 && !$board->fieldHasPiece($to) && $rankDelta === 1) {
             return true;
         }
 
-        return false;
+        if ($fileDelta === 0 && !$board->fieldHasPiece($to) && $rankDelta === 2 && $from->rank() === 2) {
+            $intermediate = new Position($from->file() . '3');
+
+            return !$board->fieldHasPiece($intermediate);
+        }
+
+        // Diagonal capture
+        return abs($fileDelta) === 1 && $rankDelta === 1 && $board->fieldHasPiece($to);
     }
 
     private function isValidBlackPawnMove(int $fileDelta, int $rankDelta, Position $from, Position $to, Board $board): bool
@@ -64,24 +56,17 @@ class PawnMovementSpecification implements PieceMovementSpecification
         // Black pawns move "down" (decreasing rank)
 
         // Forward movement (no capture)
-        if ($fileDelta === 0 && !$board->fieldHasPiece($to)) {
-            // 1 square forward
-            if ($rankDelta === -1) {
-                return true;
-            }
-            // 2 squares forward from starting position (rank 7)
-            if ($rankDelta === -2 && $from->rank() === 7) {
-                // Check that the intermediate square is also empty
-                $intermediate = new Position($from->file() . '6');
-                return !$board->fieldHasPiece($intermediate);
-            }
+        if ($fileDelta === 0 && !$board->fieldHasPiece($to) && $rankDelta === -1) {
+            return true;
+        }
+
+        if ($fileDelta === 0 && !$board->fieldHasPiece($to) && $rankDelta === -2 && $from->rank() === 7) {
+            $intermediate = new Position($from->file() . '6');
+
+            return !$board->fieldHasPiece($intermediate);
         }
 
         // Diagonal capture
-        if (abs($fileDelta) === 1 && $rankDelta === -1) {
-            return $board->fieldHasPiece($to);
-        }
-
-        return false;
+        return abs($fileDelta) === 1 && $rankDelta === -1 && $board->fieldHasPiece($to);
     }
 }

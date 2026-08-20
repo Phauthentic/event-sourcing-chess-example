@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domain\Chess\Service;
 
-use App\Domain\Chess\Board;
-use App\Domain\Chess\CastlingRights;
 use App\Domain\Chess\Game;
 use App\Domain\Chess\Piece;
 use App\Domain\Chess\PieceType;
@@ -15,7 +13,6 @@ use App\Domain\Chess\Specification\BishopMovementSpecification;
 use App\Domain\Chess\Specification\KingMovementSpecification;
 use App\Domain\Chess\Specification\KnightMovementSpecification;
 use App\Domain\Chess\Specification\PawnMovementSpecification;
-use App\Domain\Chess\Specification\PieceMovementSpecification;
 use App\Domain\Chess\Specification\QueenMovementSpecification;
 use App\Domain\Chess\Specification\RookMovementSpecification;
 
@@ -90,9 +87,6 @@ class MoveValidator
             if ($targetPiece->side === $piece->side) {
                 return false; // Can't capture own piece
             }
-        } elseif (!$this->isEnPassantCapture($game, $piece, $from, $to)) {
-            // If destination is empty and it's not en passant, this is just a regular move
-            // The piece-specific validation will handle whether this is valid
         }
 
         return true;
@@ -187,19 +181,19 @@ class MoveValidator
     private function getCastlingKingPath(Position $kingFrom, bool $isKingside): array
     {
         $rank = $kingFrom->rank();
-        if ($isKingside) {
+
+        return match ($isKingside) {
             // Kingside: e1-f1-g1 (for white) or e8-f8-g8 (for black)
-            return [
+            true => [
                 new Position('f' . $rank),
                 new Position('g' . $rank),
-            ];
-        } else {
+            ],
             // Queenside: e1-d1-c1 (for white) or e8-d8-c8 (for black)
-            return [
+            false => [
                 new Position('d' . $rank),
                 new Position('c' . $rank),
-            ];
-        }
+            ],
+        };
     }
 
     private function getPositionsBetween(Position $from, Position $to): array
@@ -244,16 +238,11 @@ class MoveValidator
     private function wouldLeaveKingInCheck(Game $game, Position $from, Position $to): bool
     {
         $board = $game->getBoard();
-        $piece = $board->getPiece($from);
-
-        // Clone board and simulate the move
         $simulatedBoard = $board->clone();
-        $simulatedBoard->movePiece($piece, $to);
+        $piece = $simulatedBoard->getPiece($from);
 
-        // Remove captured piece if any
-        if ($board->fieldHasPiece($to)) {
-            $simulatedBoard->removePiece($to);
-        }
+        // Simulate on the clone only — the live board's Piece instances must not be mutated.
+        $simulatedBoard->movePiece($piece, $to);
 
         // Check if our king is now under attack
         $kingPosition = $simulatedBoard->getKingPosition($piece->side);
